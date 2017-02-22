@@ -26,7 +26,7 @@ static const size_t HDRZ_ARG_SRC_FILE_LENGTH = sizeof(HDRZ_ARG_SRC_FILE) / sizeo
 //----------------------------------------------------------------------------------------------------------------------
 //
 //----------------------------------------------------------------------------------------------------------------------
-int hdrzGetUnquoted(hdrzSZ arg, wchar_t* buffer)
+int hdrzGetUnquoted(hdrzSZ arg, wchar_t* buffer, bool verbose)
 {
 	const wchar_t* val = arg;
 
@@ -43,12 +43,18 @@ int hdrzGetUnquoted(hdrzSZ arg, wchar_t* buffer)
 		size_t argLength = wcslen(val);
 		if(argLength < 2)
 		{
-			std::wcout << L"invalid argument length";
+			if(verbose)
+			{
+				std::wcout << L"invalid argument length";
+			}
 			return HDRZ_ERR_UNQUOTE_ARG_LENGTH;
 		}
 		else if(val[argLength - 1] != L'"')
 		{
-			std::wcout << L"quote detection error for argument " << arg;
+			if(verbose)
+			{
+				std::wcout << L"quote detection error for argument " << arg;
+			}
 			return HDRZ_ERR_UNQUOTE_DETECT;
 		}
 		else
@@ -76,11 +82,21 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		}
 	}
 
-	// Parse arguments
-	std::vector<std::string> arg_inc_dirs;
-	std::vector<std::string> arg_src_dirs;
-	std::vector<std::string> arg_src_files;
+	// Test for verbose argument
 	bool verbose = false;
+	for(int i = 1; i < argc; ++i)
+	{
+		hdrzSZ arg = argv[i];
+		if((arg != NULL) && (_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0))
+		{
+			verbose = true;
+		}
+	}
+
+	// Parse arguments
+	std::vector<std::wstring> arg_inc_dirs;
+	std::vector<std::wstring> arg_src_dirs;
+	std::vector<std::wstring> arg_src_files;
 	const wchar_t* eol = HDRZ_ARG_WIN_EOL;
 	for(int i = 1; i < argc; ++i)
 	{
@@ -95,7 +111,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		}
 		else if(_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0)
 		{
-			verbose = true;
+			continue;
 		}
 		else if(_wcsicmp(arg, HDRZ_ARG_WIN_EOL) == 0)
 		{
@@ -107,15 +123,33 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
-			arg_inc_dirs.push_back(hdrzGetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH));
+			wchar_t acBuff [MAX_PATH];
+			int iUnquote = hdrzGetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(iUnquote != 0)
+			{
+				return iUnquote;
+			}
+			arg_inc_dirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
 		{
-			arg_inc_dirs.push_back(hdrzGetUnquoted(arg + HDRZ_ARG_SRC_DIR_LENGTH));
+			wchar_t acBuff[MAX_PATH];
+			int iUnquote = hdrzGetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(iUnquote != 0)
+			{
+				return iUnquote;
+			}
+			arg_src_dirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
-			arg_inc_dirs.push_back(hdrzGetUnquoted(arg + HDRZ_ARG_SRC_FILE_LENGTH));
+			wchar_t acBuff[MAX_PATH];
+			int iUnquote = hdrzGetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(iUnquote != 0)
+			{
+				return iUnquote;
+			}
+			arg_src_files.push_back(acBuff);
 		}
 		else
 		{
