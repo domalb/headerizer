@@ -1,11 +1,13 @@
 #include "hdrz.h"
 
+#define HDRZ_STR_LEN(str) ((sizeof(HDRZ_ARG_INCLUDE_DIR) / sizeof(HDRZ_ARG_INCLUDE_DIR[0])) - 1)
+
 #define HDRZ_ARG_INCLUDE_DIR L"-i="
-static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = sizeof(HDRZ_ARG_INCLUDE_DIR) / sizeof(HDRZ_ARG_INCLUDE_DIR[0]);
+static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_INCLUDE_DIR);
 #define HDRZ_ARG_SRC_DIR L"-d="
-static const size_t HDRZ_ARG_SRC_DIR_LENGTH = sizeof(HDRZ_ARG_SRC_DIR) / sizeof(HDRZ_ARG_SRC_DIR[0]);
+static const size_t HDRZ_ARG_SRC_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_DIR);
 #define HDRZ_ARG_SRC_FILE L"-f="
-static const size_t HDRZ_ARG_SRC_FILE_LENGTH = sizeof(HDRZ_ARG_SRC_FILE) / sizeof(HDRZ_ARG_SRC_FILE[0]);
+static const size_t HDRZ_ARG_SRC_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_FILE);
 #define HDRZ_ARG_WIN_EOL L"-weol"
 #define HDRZ_ARG_UNIX_EOL L"-ueol"
 #define HDRZ_ARG_VERBOSE L"-v"
@@ -70,30 +72,30 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff [MAX_PATH];
-			int iUnquote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
-			if(iUnquote != 0)
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(unquiote != 0)
 			{
-				return iUnquote;
+				return unquiote;
 			}
 			arg_inc_dirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int iUnquote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
-			if(iUnquote != 0)
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(unquiote != 0)
 			{
-				return iUnquote;
+				return unquiote;
 			}
 			arg_src_dirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int iUnquote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
-			if(iUnquote != 0)
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(unquiote != 0)
 			{
-				return iUnquote;
+				return unquiote;
 			}
 			arg_src_files.push_back(acBuff);
 		}
@@ -105,6 +107,12 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	// Check arguments
 
 	// Write tmp file
+	std::vector<hdrz::sz> srcFileNames;
+	for(int i = 0; i < arg_src_files.size(); ++i)
+	{
+		srcFileNames.push_back(arg_src_files[i].c_str());
+	}
+	hdrz::ProcessFiles(srcFileNames.data(), srcFileNames.size(), verbose);
 
 	 return 0;
 }

@@ -13,6 +13,8 @@
 #define HDRZ_ERR_STRCPY_TRUNCATE -5
 #define HDRZ_ERR_STRCPY_LENGTH -6
 #define HDRZ_ERR_STRCPY_UNEXPECTED -7
+#define HDRZ_ERR_OPEN_OUT_FILE -8
+#define HDRZ_ERR_OPEN_IN_FILE -9
 // errno_t copyErr = wcsncpy_s(file, MAX_PATH, fileStart, fileLength);
 // if(copyErr != 0)
 // {
@@ -44,13 +46,16 @@
 
 namespace hdrz
 {
-	typedef const wchar_t* SZ;
+	typedef const wchar_t* sz;
+
+	int WalkFile(std::wostream& out, std::wistream& in, bool verbose, sz fileName);
+	int WalkFile(std::wostream& out, sz fileName, bool verbose);
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	int StrCpy(wchar_t(&dst)[t_stLength], SZ src)
+	int StrCpy(wchar_t(&dst)[t_stLength], sz src)
 	{
 		errno_t copyErr = wcscpy_s(dst, src);
 		if(copyErr == 0)
@@ -96,7 +101,7 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	int StrNCpy(wchar_t(&dst)[t_stLength], SZ src, size_t length)
+	int StrNCpy(wchar_t(&dst)[t_stLength], sz src, size_t length, bool verbose)
 	{
 		errno_t copyErr = wcsncpy_s(dst, src, length);
 		if(copyErr == 0)
@@ -141,7 +146,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int GetUnquoted(SZ arg, wchar_t* buffer, bool verbose)
+	int GetUnquoted(sz arg, wchar_t* buffer, bool verbose)
 	{
 		const wchar_t* val = arg;
 
@@ -192,7 +197,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool IsEndOfLine(SZ line)
+	bool IsEndOfLine(sz line)
 	{
 		return ((*line == 0) ||
 				(*line == L'\n') ||
@@ -202,19 +207,19 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int DetectIncludeLine(SZ line, SZ& fileNameStart, size_t& fileNameLength, bool verbose)
+	int DetectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength)
 	{
 		fileNameStart = NULL;
 		fileNameLength = 0;
 
-		SZ fileStart = line;
+		sz fileStart = line;
 		while(IsSpace(*fileStart))
 		{
 			++fileStart;
 		}
 		if(*fileStart != '#')
 		{
-			return false;
+			return 0;
 		}
 		while(IsSpace(*fileStart))
 		{
@@ -223,26 +228,26 @@ namespace hdrz
 		if(*fileStart != '\"')
 		{
 			++fileStart;
-			SZ fileEnd = fileStart;
+			sz fileEnd = fileStart;
 			while(*fileEnd != '\"')
 			{
 				if(IsEndOfLine(fileEnd))
 				{
-					return false;
+					return 0;
 				}
 				++fileEnd;
 			}
 
 			fileNameStart = fileStart;
 			fileNameLength = fileEnd - fileStart;
-			return 0;
 		}
+		return 0;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int WalkFile(std::wostream& out, std::wistream& in, bool verbose, SZ fileName)
+	int WalkFile(std::wostream& out, std::wistream& in, bool verbose, sz fileName)
 	{
 		int lineIndex = 0;
 
@@ -253,21 +258,22 @@ namespace hdrz
 		{
 			in.getline(line, lineLengthMax);
 
-			SZ fileNameStart;
+			sz fileNameStart;
 			size_t fileNameLength;
 			int detect = DetectIncludeLine(line, fileNameStart, fileNameLength);
 			if(detect < 0)
 			{
 				if(verbose)
 				{
-					std::wcout << L"error detecting include line while walking line " << lineIndex << " in file " << fileName << std::endl;
+					std::wcout << L"error detecting include line while walking line " << lineIndex << L" in file " << fileName << std::endl;
 				}
 				return detect;
 			}
-			if(fileNameStart != NULL)
+			else if(fileNameStart != NULL)
 			{
-				wchar_t fileName [MAX_PATH];
-				hdrzReturnIfError(StrNCpy(fileName, fileNameStart, fileNameLength), L"error copy include file name while walking line " << lineIndex << " in file " << fileName);
+				wchar_t incFileName [MAX_PATH];
+				hdrzReturnIfError(StrNCpy(incFileName, fileNameStart, fileNameLength, verbose), L"error copy include file name while walking line " << lineIndex << L" in file " << fileName);
+				hdrzReturnIfError(WalkFile(out, incFileName, verbose), L"error walking file " << incFileName << L" included in " << fileName);
 			}
 			else
 			{
@@ -280,11 +286,52 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int WalkFile(std::wostream& out, SZ fileName, bool verbose)
+	int WalkFile(std::wostream& out, sz fileName, bool verbose)
 	{
 		std::wifstream in;
 		in.open(fileName);
+		if(in.bad())
+		{
+			if(verbose)
+			{
+				std::wcout << L"error opening input file " << fileName << std::endl;
+			}
+			return HDRZ_ERR_OPEN_IN_FILE;
+		}
 
-		return WalkFile(out, in, verbose, fileName);
+		int walk = WalkFile(out, in, verbose, fileName);
+		in.close();
+
+		return walk;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int ProcessFiles(sz* srcFileNames, size_t srcFileNamesCount, bool verbose)
+	{
+		for(size_t i = 0; i < srcFileNamesCount; ++i)
+		{
+			sz srcFileName = srcFileNames[i];
+
+			std::wstring outFileName = L"hdrz_";
+			outFileName += srcFileName;
+
+			std::wofstream out;
+			out.open(outFileName, std::wofstream::out);
+			if(out.bad())
+			{
+				if(verbose)
+				{
+					std::wcout << L"error opening output file " << outFileName << std::endl;
+				}
+				return HDRZ_ERR_OPEN_OUT_FILE;
+			}
+
+			hdrzReturnIfError(WalkFile(out, srcFileName, verbose), L"error walking source file #" << i << " " << srcFileName);
+			out.close();
+		}
+		return 0;
+
 	}
 }
