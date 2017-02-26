@@ -1,13 +1,15 @@
 #include "hdrz.h"
 
-#define HDRZ_STR_LEN(str) ((sizeof(HDRZ_ARG_INCLUDE_DIR) / sizeof(HDRZ_ARG_INCLUDE_DIR[0])) - 1)
-
 #define HDRZ_ARG_INCLUDE_DIR L"-i="
 static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_INCLUDE_DIR);
 #define HDRZ_ARG_SRC_DIR L"-d="
 static const size_t HDRZ_ARG_SRC_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_DIR);
 #define HDRZ_ARG_SRC_FILE L"-f="
 static const size_t HDRZ_ARG_SRC_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_FILE);
+#define HDRZ_ARG_WORK_DIR L"-w="
+static const size_t HDRZ_ARG_WORK_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_WORK_DIR);
+#define HDRZ_ARG_OUT_FILE L"-o="
+static const size_t HDRZ_ARG_OUT_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_OUT_FILE);
 #define HDRZ_ARG_WIN_EOL L"-weol"
 #define HDRZ_ARG_UNIX_EOL L"-ueol"
 #define HDRZ_ARG_VERBOSE L"-v"
@@ -42,9 +44,11 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	}
 
 	// Parse arguments
-	std::vector<std::wstring> arg_inc_dirs;
-	std::vector<std::wstring> arg_src_dirs;
-	std::vector<std::wstring> arg_src_files;
+	std::vector<std::wstring> argIncDirs;
+	std::vector<std::wstring> argSrcDirs;
+	std::vector<std::wstring> argSrcFiles;
+	std::wstring workDir;
+	wchar_t acDstFile [MAX_PATH] = { 0 };
 	const wchar_t* eol = HDRZ_ARG_WIN_EOL;
 	for(int i = 1; i < argc; ++i)
 	{
@@ -69,6 +73,23 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		{
 			eol = HDRZ_ARG_UNIX_EOL;
 		}
+		else if(_wcsnicmp(arg, HDRZ_ARG_WORK_DIR, HDRZ_ARG_WORK_DIR_LENGTH) == 0)
+		{
+			if(workDir.empty() == false)
+			{
+				if(verbose)
+				{
+					std::wcout << L"multiple working directories detected" << std::endl;
+				}
+				return HDRZ_ERR_MULTIPLE_WORK_DIRS;
+			}
+			wchar_t acBuff [MAX_PATH];
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(unquiote != 0)
+			{
+				return unquiote;
+			}
+		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff [MAX_PATH];
@@ -77,7 +98,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 			{
 				return unquiote;
 			}
-			arg_inc_dirs.push_back(acBuff);
+			argIncDirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
 		{
@@ -87,7 +108,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 			{
 				return unquiote;
 			}
-			arg_src_dirs.push_back(acBuff);
+			argSrcDirs.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
@@ -97,22 +118,80 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 			{
 				return unquiote;
 			}
-			arg_src_files.push_back(acBuff);
+			argSrcFiles.push_back(acBuff);
+		}
+		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
+		{
+			wchar_t acBuff[MAX_PATH];
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			if(unquiote != 0)
+			{
+				return unquiote;
+			}
+			argSrcFiles.push_back(acBuff);
+		}
+		else if(_wcsnicmp(arg, HDRZ_ARG_OUT_FILE, HDRZ_ARG_OUT_FILE_LENGTH) == 0)
+		{
+			if(acDstFile[0] != 0)
+			{
+				if(verbose)
+				{
+					std::wcout << L"multiple destination files detected" << std::endl;
+				}
+				return HDRZ_ERR_MULTIPLE_DST_FILES;
+			}
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acDstFile, verbose);
+			if(unquiote != 0)
+			{
+				return unquiote;
+			}
+		}
+	}
+
+	// Check
+	if(acDstFile[0] == 0)
+	{
+		if(argSrcFiles.size() == 1)
+		{
+			hdrz::sz srcFileName = argSrcFiles[0].c_str();
+			hdrzReturnIfError(hdrz::StrCpy(acDstFile, srcFileName, verbose), L"error building output filename");
+			hdrzReturnIfError(hdrz::StrCat(acDstFile, L".hdrz", verbose), L"error adding tag to output filename");
+			hdrz::sz srcFileExt = wcsrchr(srcFileName, '.');
+			if(srcFileExt != NULL)
+			{
+				hdrzReturnIfError(hdrz::StrCat(acDstFile, srcFileExt, verbose), L"error adding extention to output filename");
+			}
 		}
 		else
 		{
+			if(verbose)
+			{
+				std::wcout << L"no destination file" << std::endl;
+			}
 		}
+		return HDRZ_ERR_NO_DST_FILE;
 	}
-
-	// Check arguments
 
 	// Write tmp file
-	std::vector<hdrz::sz> srcFileNames;
-	for(int i = 0; i < arg_src_files.size(); ++i)
+	std::vector<hdrz::sz> incDirNames;
+	for(size_t i = 0; i < argIncDirs.size(); ++i)
 	{
-		srcFileNames.push_back(arg_src_files[i].c_str());
+		incDirNames.push_back(argIncDirs[i].c_str());
 	}
-	hdrz::ProcessFiles(srcFileNames.data(), srcFileNames.size(), verbose);
+	std::vector<hdrz::sz> srcFileNames;
+	for(size_t i = 0; i < argSrcFiles.size(); ++i)
+	{
+		srcFileNames.push_back(argSrcFiles[i].c_str());
+	}
 
-	 return 0;
+	hdrz::input in;
+	memset(&in, 0, sizeof(in));
+	in.incDirs = incDirNames.data();
+	in.incDirsCount = incDirNames.size();
+	in.srcFiles = srcFileNames.data();
+	in.srcFilesCount = srcFileNames.size();
+	in.dstFile = acDstFile;
+	int process = hdrz::Process(in, verbose);
+
+	 return process;
 }
