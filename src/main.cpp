@@ -1,5 +1,7 @@
 #include "hdrz.h"
 
+#include <windows.h>
+
 #define HDRZ_ARG_INCLUDE_DIR L"-i="
 static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_INCLUDE_DIR);
 #define HDRZ_ARG_SRC_DIR L"-d="
@@ -48,7 +50,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	std::vector<std::wstring> argSrcDirs;
 	std::vector<std::wstring> argSrcFiles;
 	std::wstring workDir;
-	wchar_t acDstFile [MAX_PATH] = { 0 };
+	wchar_t acOutFile [MAX_PATH] = { 0 };
 	const wchar_t* eol = HDRZ_ARG_WIN_EOL;
 	for(int i = 1; i < argc; ++i)
 	{
@@ -132,7 +134,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_OUT_FILE, HDRZ_ARG_OUT_FILE_LENGTH) == 0)
 		{
-			if(acDstFile[0] != 0)
+			if(acOutFile[0] != 0)
 			{
 				if(verbose)
 				{
@@ -140,7 +142,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 				}
 				return HDRZ_ERR_MULTIPLE_DST_FILES;
 			}
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acDstFile, verbose);
+			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acOutFile, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -149,17 +151,17 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	}
 
 	// Check
-	if(acDstFile[0] == 0)
+	if(acOutFile[0] == 0)
 	{
 		if(argSrcFiles.size() == 1)
 		{
 			hdrz::sz srcFileName = argSrcFiles[0].c_str();
-			hdrzReturnIfError(hdrz::StrCpy(acDstFile, srcFileName, verbose), L"error building output filename");
-			hdrzReturnIfError(hdrz::StrCat(acDstFile, L".hdrz", verbose), L"error adding tag to output filename");
+			hdrzReturnIfError(hdrz::StrCpy(acOutFile, srcFileName, verbose), L"error building output filename");
+			hdrzReturnIfError(hdrz::StrCat(acOutFile, L".hdrz", verbose), L"error adding tag to output filename");
 			hdrz::sz srcFileExt = wcsrchr(srcFileName, '.');
 			if(srcFileExt != NULL)
 			{
-				hdrzReturnIfError(hdrz::StrCat(acDstFile, srcFileExt, verbose), L"error adding extention to output filename");
+				hdrzReturnIfError(hdrz::StrCat(acOutFile, srcFileExt, verbose), L"error adding extention to output filename");
 			}
 		}
 		else
@@ -168,29 +170,32 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 			{
 				std::wcout << L"no destination file" << std::endl;
 			}
+			return HDRZ_ERR_NO_OUT_FILE;
 		}
-		return HDRZ_ERR_NO_DST_FILE;
 	}
 
-	// Write tmp file
+	// Build process input
 	std::vector<hdrz::sz> incDirNames;
+	incDirNames.reserve(argIncDirs.size());
 	for(size_t i = 0; i < argIncDirs.size(); ++i)
 	{
 		incDirNames.push_back(argIncDirs[i].c_str());
 	}
 	std::vector<hdrz::sz> srcFileNames;
+	srcFileNames.reserve(argSrcFiles.size());
 	for(size_t i = 0; i < argSrcFiles.size(); ++i)
 	{
 		srcFileNames.push_back(argSrcFiles[i].c_str());
 	}
-
 	hdrz::input in;
 	memset(&in, 0, sizeof(in));
 	in.incDirs = incDirNames.data();
 	in.incDirsCount = incDirNames.size();
 	in.srcFiles = srcFileNames.data();
 	in.srcFilesCount = srcFileNames.size();
-	in.dstFile = acDstFile;
+	in.outFile = acOutFile;
+
+	// Invoke process
 	int process = hdrz::Process(in, verbose);
 
 	 return process;
