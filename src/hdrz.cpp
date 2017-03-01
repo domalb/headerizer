@@ -29,21 +29,46 @@ namespace hdrz
 	// 1) Along the path that's specified by each /I compiler option.
 	// 2) When compiling occurs on the command line, along the paths that are specified by the INCLUDE environment variable.
 	//----------------------------------------------------------------------------------------------------------------------
-	std::wstring context::locateFile(sz localFileName) const
+	int context::resolveInclusion(sz inclusionSpec, sz inclusionContainerFileDir, bool quoted, std::wstring& resolvedDir) const
 	{
-		assert(PathIsAbsolute(localFileName) == false);
+		assert(pathIsAbsolute(inclusionSpec) == false);
+		assert(pathIsAbsolute(inclusionContainerFileDir));
 
 		std::wstring absFileName;
+		if(quoted)
+		{
+			// In the same directory as the file that contains the #include statement.
+			absFileName = inclusionContainerFileDir;
+			absFileName += inclusionSpec;
+			if(fileExists(absFileName.c_str()))
+			{
+				resolvedDir = absFileName;
+				return 0;
+			}
+
+			// In the directories of the currently opened include files, in the reverse order in which they were opened.The search begins in the directory of the parent include file and continues upward through the directories of any grandparent include files.
+			// TODO
+
+		}
+
+		// Along the path that's specified by each /I compiler option.
 		for(size_t i = 0; i < incDirsCount; ++i)
 		{
 			absFileName = incDirs[i];
-			absFileName += localFileName;
-			if(FileExists(absFileName.c_str()))
+			absFileName += inclusionSpec;
+			if(fileExists(absFileName.c_str()))
 			{
-				return absFileName;
+				resolvedDir = absFileName;
+				return 0;
 			}
 		}
-		return std::wstring();
+
+		// Along the paths that are specified by the INCLUDE environment variable.
+		// TODO
+
+		// Could not resolve the inclusion
+		resolvedDir.clear();
+		return 0;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -64,13 +89,13 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int DetectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength)
+	int detectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength)
 	{
 		fileNameStart = NULL;
 		fileNameLength = 0;
 
 		sz fileStart = line;
-		while(IsSpace(*fileStart))
+		while(isSpace(*fileStart))
 		{
 			++fileStart;
 		}
@@ -79,7 +104,7 @@ namespace hdrz
 			return 0;
 		}
 		++fileStart;
-		while(IsSpace(*fileStart))
+		while(isSpace(*fileStart))
 		{
 			++fileStart;
 		}
@@ -88,7 +113,7 @@ namespace hdrz
 			return 0;
 		}
 		fileStart += HDRZ_STR_LEN(L"include");
-		while(IsSpace(*fileStart))
+		while(isSpace(*fileStart))
 		{
 			++fileStart;
 		}
@@ -102,7 +127,7 @@ namespace hdrz
 		sz fileEnd = fileStart;
 		while(*fileEnd != quoteOpen)
 		{
-			if(IsEndOfLine(fileEnd))
+			if(isEndOfLine(fileEnd))
 			{
 				return 0;
 			}
@@ -168,22 +193,31 @@ namespace hdrz
 	}
 */
 	//----------------------------------------------------------------------------------------------------------------------
-	// incFileName May be foo.h, bar/foo.h, ../bar/foo.h, c:\bar\foo.h
+	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int HandleIncludeLine(context& ctxt, std::wostream& out, sz line, sz incFileName, bool verbose, sz fileName)
+	int handleIncludeLine(context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose, sz fileDir, sz fileName)
 	{
+		assert(pathIsAbsolute(fileName) == false);
+		assert(pathIsAbsolute(fileDir));
+
 		// Find the absolute path to include
 		std::wstring absIncFileName;
-		if(PathIsAbsolute(incFileName))
+		if(pathIsAbsolute(inclusionSpec))
 		{
-			if(FileExists(incFileName))
+			if(fileExists(inclusionSpec))
 			{
-				absIncFileName = incFileName;
+				absIncFileName = inclusionSpec;
 			}
 		}
 		else
 		{
-			absIncFileName = ctxt.locateFile(incFileName);
+			std::wstring absIncDir;
+			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, fileDir, quoted, absIncDir), L"Error resolving inclusion " << inclusionSpec << L" in " << fileName);
+			if(absIncDir.empty() == false)
+			{
+				absIncFileName = absIncDir;
+				absIncFileName += inclusionSpec;
+			}
 		}
 		if(absIncFileName.empty())
 		{
@@ -193,11 +227,11 @@ namespace hdrz
 		else
 		{
 			// Checking the absolute file has not already been included
-			if(ctxt.hasIncluded(incFileName) == false)
+			if(ctxt.hasIncluded(absIncFileName) == false)
 			{
 				// Actually include the file
 				ctxt.included.push_back(absIncFileName);
-				hdrzReturnIfError(WalkFile(ctxt, out, incFileName, verbose), L"error walking file " << incFileName << L" included in " << fileName);
+				hdrzReturnIfError(walkFile(ctxt, out, incFileName, verbose), L"error walking file " << incFileName << L" included in " << fileName);
 			}
 		}
 
@@ -207,7 +241,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int WalkFile(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileName)
+	int walkFileStream(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileDir, sz fileName)
 	{
 		int lineIndex = 0;
 
@@ -220,7 +254,7 @@ namespace hdrz
 
 			sz fileNameStart;
 			size_t fileNameLength;
-			int detect = DetectIncludeLine(line, fileNameStart, fileNameLength);
+			int detect = detectIncludeLine(line, fileNameStart, fileNameLength);
 			if(detect < 0)
 			{
 				if(verbose)
@@ -233,8 +267,8 @@ namespace hdrz
 			{
 				// Include line found
 				wchar_t incFileName [MAX_PATH];
-				hdrzReturnIfError(StrNCpy(incFileName, fileNameStart, fileNameLength, verbose), L"error copying include file name while walking line " << lineIndex << L" in file " << fileName);
-				hdrzReturnIfError(HandleIncludeLine(ctxt, out, line, incFileName, verbose, fileName), L"error handling include of " << incFileName << L" in " << fileName);
+				hdrzReturnIfError(strNCpy(incFileName, fileNameStart, fileNameLength, verbose), L"error copying include file name while walking line " << lineIndex << L" in file " << fileName);
+				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, incFileName, verbose, fileDir, fileName), L"error handling include of " << incFileName << L" in " << fileName);
 			}
 			else
 			{
@@ -248,7 +282,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int WalkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose)
+	int walkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose)
 	{
 		std::wifstream in;
 		in.open(fileName);
@@ -261,7 +295,7 @@ namespace hdrz
 			return HDRZ_ERR_OPEN_IN_FILE;
 		}
 
-		int walk = WalkFile(ctxt, out, in, verbose, fileName);
+		int walk = walkFileStream(ctxt, out, in, verbose, fileName);
 		in.close();
 		return walk;
 	}
@@ -269,7 +303,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int Process(const input& in, bool verbose)
+	int process(const input& in, bool verbose)
 	{
 		context ctxt;
 		for(size_t i = 0; i < in.definesCount; ++i)
@@ -291,7 +325,7 @@ namespace hdrz
 		for(size_t i = 0; i < in.srcFilesCount; ++i)
 		{
 			sz srcFile = in.srcFiles[i];
-			hdrzReturnIfError(WalkFile(ctxt, out, srcFile, verbose), L"error walking source file #" << i << " " << srcFile);
+			hdrzReturnIfError(walkFile(ctxt, out, srcFile, verbose), L"error walking source file #" << i << " " << srcFile);
 		}
 		out.close();
 		return 0;
@@ -300,7 +334,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool PathIsAbsolute(sz fileName)
+	bool pathIsAbsolute(sz fileName)
 	{
 		return (wcschr(fileName, L':') != NULL);
 	}
@@ -308,7 +342,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool FileExists(sz fileName)
+	bool fileExists(sz fileName)
 	{
 		// 		return (PathFileExistsW(fileName) != FALSE);
 		DWORD dwAttribs = GetFileAttributesW(fileName);
@@ -320,7 +354,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int GetUnquoted(sz arg, wchar_t* buffer, bool verbose)
+	int getUnquoted(sz arg, wchar_t* buffer, bool verbose)
 	{
 		const wchar_t* val = arg;
 
@@ -363,7 +397,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool IsSpace(wchar_t c)
+	bool isSpace(wchar_t c)
 	{
 		return ((c == L' ') || (c == L'\t'));
 	}
@@ -371,7 +405,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool IsEndOfLine(sz line)
+	bool isEndOfLine(sz line)
 	{
 		return ((*line == 0) ||
 			(*line == L'\n') ||

@@ -86,7 +86,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 				return HDRZ_ERR_MULTIPLE_WORK_DIRS;
 			}
 			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -95,7 +95,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -105,7 +105,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -115,7 +115,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -125,7 +125,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -142,7 +142,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 				}
 				return HDRZ_ERR_MULTIPLE_DST_FILES;
 			}
-			int unquiote = hdrz::GetUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acOutFile, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acOutFile, verbose);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -156,12 +156,12 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		if(argSrcFiles.size() == 1)
 		{
 			hdrz::sz srcFileName = argSrcFiles[0].c_str();
-			hdrzReturnIfError(hdrz::StrCpy(acOutFile, srcFileName, verbose), L"error building output filename");
-			hdrzReturnIfError(hdrz::StrCat(acOutFile, L".hdrz", verbose), L"error adding tag to output filename");
+			hdrzReturnIfError(hdrz::strCpy(acOutFile, srcFileName, verbose), L"error building output filename");
+			hdrzReturnIfError(hdrz::strCat(acOutFile, L".hdrz", verbose), L"error adding tag to output filename");
 			hdrz::sz srcFileExt = wcsrchr(srcFileName, '.');
 			if(srcFileExt != NULL)
 			{
-				hdrzReturnIfError(hdrz::StrCat(acOutFile, srcFileExt, verbose), L"error adding extention to output filename");
+				hdrzReturnIfError(hdrz::strCat(acOutFile, srcFileExt, verbose), L"error adding extention to output filename");
 			}
 		}
 		else
@@ -196,7 +196,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	in.outFile = acOutFile;
 
 	// Invoke process
-	int process = hdrz::Process(in, verbose);
+	int process = hdrz::process(in, verbose);
 
 	 return process;
 }

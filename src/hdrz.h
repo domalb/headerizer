@@ -72,9 +72,12 @@ namespace hdrz
 	struct context
 	{
 		context();
-		/// Find given local file 
-		/// \return  Absolute file name if found, empty string either
-		std::wstring locateFile(sz localFileName) const;
+		/// Locate the file for an inclusion like #include "../foo.h" or #include <framework/foo.h>
+		/// \param[in] inclusionSpec  Content of the inclusion instruction, without quotes, like '../foo.h' or 'framework/foo.h'
+		/// \param[in] inclusionContainerFileDir  Absolute directory of the file that contains the inclusion instruction.
+		/// \param[in] quoted  Use of double quotes (true) or angle-brackets (false)
+		/// \return  Absolute directory which contains 
+		int resolveInclusion(sz inclusionSpec, sz inclusionContainerFileDir, bool quoted, std::wstring& resolvedDir) const;
 		bool hasIncluded(sz absoluteFileName) const;
 
 		sz* incDirs;
@@ -83,26 +86,24 @@ namespace hdrz
 		std::vector<std::wstring> included;
 	};
 
-	int WalkFile(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileName);
-	int WalkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose);
-	int DetectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength);
-	int HandleIncludeLine(context& ctxt, std::wostream& out, sz line, sz incFileName, bool verbose, sz fileName);
-	int WalkFile(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileName);
-	int WalkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose);
-	int Process(const input& in, bool verbose);
+	int detectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength);
+	int handleIncludeLine(context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose, sz fileDir, sz fileName);
+	int walkFileStream(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileName);
+	int walkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose);
+	int process(const input& in, bool verbose);
 
 	// Utils
-	bool PathIsAbsolute(sz fileName);
-	bool FileExists(sz fileName);
-	int GetUnquoted(sz arg, wchar_t* buffer, bool verbose);
-	bool IsSpace(wchar_t c);
-	bool IsEndOfLine(sz line);
+	bool pathIsAbsolute(sz fileName);
+	bool fileExists(sz fileName);
+	int getUnquoted(sz arg, wchar_t* buffer, bool verbose);
+	bool isSpace(wchar_t c);
+	bool isEndOfLine(sz line);
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int StrCpy(wchar_t(&dst)[t_stLength], sz src, bool verbose)
+	inline int strCpy(wchar_t(&dst)[t_stLength], sz src, bool verbose)
 	{
 		errno_t copyErr = wcscpy_s(dst, src);
 		if(copyErr == 0)
@@ -148,7 +149,7 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int StrNCpy(wchar_t(&dst)[t_stLength], sz src, size_t length, bool verbose)
+	inline int strNCpy(wchar_t(&dst)[t_stLength], sz src, size_t length, bool verbose)
 	{
 		errno_t copyErr = wcsncpy_s(dst, src, length);
 		if(copyErr == 0)
@@ -194,7 +195,7 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int StrCat(wchar_t(&dst)[t_stLength], sz src, bool verbose)
+	inline int strCat(wchar_t(&dst)[t_stLength], sz src, bool verbose)
 	{
 		errno_t copyErr = wcscat_s(dst, src);
 		if(copyErr == 0)
