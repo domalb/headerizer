@@ -19,6 +19,7 @@
 #define HDRZ_ERR_MULTIPLE_WORK_DIRS -10
 #define HDRZ_ERR_MULTIPLE_DST_FILES -11
 #define HDRZ_ERR_NO_OUT_FILE -12
+#define HDRZ_ERR_INVALID_FILE_PATH -13
 // errno_t copyErr = wcsncpy_s(file, MAX_PATH, fileStart, fileLength);
 // if(copyErr != 0)
 // {
@@ -55,45 +56,81 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	struct input
+	struct Input
 	{
-		sz* defines;
-		size_t definesCount;
-		sz* incDirs;
-		size_t incDirsCount;
-		sz* srcFiles;
-		size_t srcFilesCount;
-		sz outFile;
+		sz* m_defines;
+		size_t m_definesCount;
+		sz* m_incDirs;
+		size_t m_incDirsCount;
+		sz* m_srcFiles;
+		size_t m_srcFilesCount;
+		sz m_outFile;
 	};
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	struct context
+	struct WalkItem
 	{
-		context();
+		WalkItem(const std::wstring& fileDir, const std::wstring& fileName);
+		std::wstring m_fileDir;
+		std::wstring m_fileName;
+		std::wstring m_filePath;
+	};
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	struct WalkStack
+	{
+		bool empty() const { return m_items.empty(); }
+		size_t size() const { return m_items.size(); }
+
+		void push(const std::wstring& fileDir, const std::wstring& fileName);
+		void pop() { m_items.pop_back(); }
+		const WalkItem& getTop() const { return m_items[m_items.size() - 1]; }
+		WalkItem& getTop() { return m_items[m_items.size() - 1]; }
+		WalkItem& getBottom() { return m_items[0]; }
+		const WalkItem& operator [] (int index) const { return m_items[index]; }
+		WalkItem& operator [] (int index) { return m_items[index]; }
+
+		std::vector<WalkItem> m_items;
+	};
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	struct Context
+	{
+		Context();
 		/// Locate the file for an inclusion like #include "../foo.h" or #include <framework/foo.h>
 		/// \param[in] inclusionSpec  Content of the inclusion instruction, without quotes, like '../foo.h' or 'framework/foo.h'
 		/// \param[in] inclusionContainerFileDir  Absolute directory of the file that contains the inclusion instruction.
 		/// \param[in] quoted  Use of double quotes (true) or angle-brackets (false)
 		/// \return  Absolute directory which contains 
-		int resolveInclusion(sz inclusionSpec, sz inclusionContainerFileDir, bool quoted, std::wstring& resolvedDir) const;
+		int resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedDir) const;
 		bool hasIncluded(sz absoluteFileName) const;
+		const std::wstring& getCurrentFilePath() const { return m_walkStack.getTop().m_filePath; }
 
-		sz* incDirs;
-		size_t incDirsCount;
-		std::vector<std::wstring> defined;
-		std::vector<std::wstring> included;
+		sz* m_incDirs;
+		size_t m_incDirsCount;
+		std::vector<std::wstring> m_defined;
+		std::vector<std::wstring> m_included;
+
+		WalkStack m_walkStack;
 	};
 
 	int detectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength);
-	int handleIncludeLine(context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose, sz fileDir, sz fileName);
-	int walkFileStream(context& ctxt, std::wostream& out, std::wistream& in, bool verbose, sz fileName);
-	int walkFile(context& ctxt, std::wostream& out, sz fileName, bool verbose);
-	int process(const input& in, bool verbose);
+	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose);
+	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool verbose);
+	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool verbose);
+	int process(const Input& in, bool verbose);
 
 	// Utils
-	bool pathIsAbsolute(sz fileName);
+	bool filePathIsAbsolute(sz path);
+	void splitFilePathToDirAndName(sz filePath, std::wstring& fileDir, std::wstring& fileName);
+	void canonicalizeFilePath(sz in, std::wstring& out);
+	void canonicalizeFilePath(std::wstring& inOut);
 	bool fileExists(sz fileName);
 	int getUnquoted(sz arg, wchar_t* buffer, bool verbose);
 	bool isSpace(wchar_t c);

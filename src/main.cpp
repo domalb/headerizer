@@ -187,13 +187,13 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	{
 		srcFileNames.push_back(argSrcFiles[i].c_str());
 	}
-	hdrz::input in;
+	hdrz::Input in;
 	memset(&in, 0, sizeof(in));
-	in.incDirs = incDirNames.data();
-	in.incDirsCount = incDirNames.size();
-	in.srcFiles = srcFileNames.data();
-	in.srcFilesCount = srcFileNames.size();
-	in.outFile = acOutFile;
+	in.m_incDirs = incDirNames.data();
+	in.m_incDirsCount = incDirNames.size();
+	in.m_srcFiles = srcFileNames.data();
+	in.m_srcFilesCount = srcFileNames.size();
+	in.m_outFile = acOutFile;
 
 	// Invoke process
 	int process = hdrz::process(in, verbose);
