@@ -35,6 +35,7 @@ namespace hdrz
 	{
 		assert(filePathIsAbsolute(fileDir.c_str()));
 		assert(filePathIsAbsolute(fileName.c_str()) == false);
+
 		m_items.push_back(WalkItem(fileDir, fileName));
 	}
 
