@@ -58,6 +58,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	struct Input
 	{
+		bool m_comments;
 		sz* m_defines;
 		size_t m_definesCount;
 		sz* m_incDirs;
@@ -112,6 +113,7 @@ namespace hdrz
 		bool hasIncluded(sz absoluteFileName) const;
 		const std::wstring& getCurrentFilePath() const { return m_walkStack.getTop().m_filePath; }
 
+		bool m_comments;
 		sz* m_incDirs;
 		size_t m_incDirsCount;
 		std::vector<std::wstring> m_defined;

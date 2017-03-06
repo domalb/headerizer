@@ -6,8 +6,13 @@
 #include <assert.h>
 #include <shlwapi.h>
 
-//static const wchar_t fileSeparator = L'/';
+#ifdef _WIN32
 static const wchar_t fileSeparator = L'\\';
+static const wchar_t fileWrongSeparator = L'/';
+#else // _WIN
+static const wchar_t fileSeparator = L'/';
+static const wchar_t fileWrongSeparator = L'\\';
+#endif // _WIN
 
 namespace hdrz
 {
@@ -37,7 +42,8 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	Context::Context()
-		: m_incDirs(NULL)
+		: m_comments(false)
+		, m_incDirs(NULL)
 		, m_incDirsCount(0)
 	{
 	}
@@ -68,7 +74,7 @@ namespace hdrz
 				const WalkItem& rItem = m_walkStack[i];
 				absFileName = rItem.m_fileDir;
 				absFileName += fileSeparator;
-				absFileName += rItem.m_fileName;
+				absFileName += inclusionSpec;
 				if(fileExists(absFileName.c_str()))
 				{
 					resolvedDir = rItem.m_fileDir;
@@ -241,13 +247,16 @@ namespace hdrz
 			if(absIncFileDir.empty() == false)
 			{
 				absIncFilePath = absIncFileDir;
-				absIncFilePath = fileSeparator;
+				absIncFilePath += fileSeparator;
 				absIncFilePath += inclusionSpec;
 			}
 		}
 		if(absIncFilePath.empty())
 		{
-			// Could not find the absolute file to include, the include is left as-is
+			if(ctxt.m_comments)
+			{
+				out << L"// HDRZ : include left as-is since no file was found" << std::endl;
+			}
 			out << line << std::endl;
 		}
 		else
@@ -326,6 +335,10 @@ namespace hdrz
 
 		int ret = 0;
 		ctxt.m_walkStack.push(fileDir, fileName);
+		if(ctxt.m_comments)
+		{
+			out << L"// HDRZ : begin of " << ctxt.m_walkStack.getTop().m_filePath << std::endl;
+		}
 
 		std::wifstream in;
 		in.open(filePath);
@@ -343,7 +356,12 @@ namespace hdrz
 			in.close();
 		}
 
+		if(ctxt.m_comments)
+		{
+			out << L"// HDRZ : end of " << ctxt.m_walkStack.getTop().m_filePath << std::endl;
+		}
 		ctxt.m_walkStack.pop();
+
 		return ret;
 	}
 
@@ -353,6 +371,7 @@ namespace hdrz
 	int process(const Input& in, bool verbose)
 	{
 		Context ctxt;
+		ctxt.m_comments = in.m_comments;
 		for(size_t i = 0; i < in.m_definesCount; ++i)
 		{
 			ctxt.m_defined.push_back(in.m_defines[i]);
@@ -409,10 +428,24 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	void canonicalizeFilePath(sz in, std::wstring& out)
 	{
-		wchar_t tmpBuff [MAX_PATH];
-		if(PathCanonicalize(tmpBuff, in) == TRUE)
+		wchar_t tmpBuff1 [MAX_PATH];
+		strCpy(tmpBuff1, in, false);
+		wchar_t* val = tmpBuff1;
+		while(*val != 0)
 		{
-			out = tmpBuff;
+			if(*val == fileWrongSeparator)
+			{
+				*val = fileSeparator;
+			}
+			++val;
+		}
+
+		wchar_t tmpBuff2 [MAX_PATH];
+		// PathCchCanonicalize
+		// PathCchCanonicalizeEx
+		if(PathCanonicalize(tmpBuff2, tmpBuff1) == TRUE)
+		{
+			out = tmpBuff2;
 		}
 		else
 		{

@@ -16,6 +16,7 @@ static const size_t HDRZ_ARG_OUT_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_OUT_FILE);
 #define HDRZ_ARG_UNIX_EOL L"-ueol"
 #define HDRZ_ARG_VERBOSE L"-v"
 #define HDRZ_ARG_PAUSE L"-p"
+#define HDRZ_ARG_COMMENTS L"-c"
 
 //----------------------------------------------------------------------------------------------------------------------
 //
@@ -46,6 +47,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	}
 
 	// Parse arguments
+	bool comments = false;
 	std::vector<std::wstring> argIncDirs;
 	std::vector<std::wstring> argSrcDirs;
 	std::vector<std::wstring> argSrcFiles;
@@ -66,6 +68,10 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0)
 		{
 			continue;
+		}
+		else if(_wcsicmp(arg, HDRZ_ARG_COMMENTS) == 0)
+		{
+			comments = true;
 		}
 		else if(_wcsicmp(arg, HDRZ_ARG_WIN_EOL) == 0)
 		{
@@ -189,6 +195,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	}
 	hdrz::Input in;
 	memset(&in, 0, sizeof(in));
+	in.m_comments = comments;
 	in.m_incDirs = incDirNames.data();
 	in.m_incDirsCount = incDirNames.size();
 	in.m_srcFiles = srcFileNames.data();
