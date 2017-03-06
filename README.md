@@ -14,7 +14,7 @@ To fix this, some libraries are available as a single header, which is extremely
   
 HDRZ aims at transforming a library split across multiple h/c/cpp files into a signle header, so that it could be reused/integrated very easily.
 
-## HDRZ syntax
+## Syntax
 Basic command line :
 
 `hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp`
