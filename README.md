@@ -1,5 +1,18 @@
 # Headerizer (HDRZ)
+
 Convert C/C++ file sets to a single header (.h file)
+
+## Purpose
+
+C/C++ libraries are sometimes hard to reuse/integrate in other projects :
+  - Binaries are not compiled with expected compiler options
+  - Binaries are hard to link in target build
+  - Sources require specific tools to be compiled (python, cmake, premake...)
+  - Sources contain no project file for you IDE, rebuilding one would be tedious
+  
+To fix this, some libraries are available as a single header, which is extremely easy to integrate.
+  
+HDRZ aims at transforming a library split across multiple h/c/cpp files into a signle header, so that it could be reused/integrated very easily.
 
 ## HDRZ syntax
 Basic command line :
