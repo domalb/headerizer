@@ -92,8 +92,8 @@ namespace hdrz
 		const WalkItem& getTop() const { return m_items[m_items.size() - 1]; }
 		WalkItem& getTop() { return m_items[m_items.size() - 1]; }
 		WalkItem& getBottom() { return m_items[0]; }
-		const WalkItem& operator [] (int index) const { return m_items[index]; }
-		WalkItem& operator [] (int index) { return m_items[index]; }
+		const WalkItem& operator [] (size_t index) const { return m_items[index]; }
+		WalkItem& operator [] (size_t index) { return m_items[index]; }
 
 		std::vector<WalkItem> m_items;
 	};
