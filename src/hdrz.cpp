@@ -72,7 +72,7 @@ namespace hdrz
 	// 1) Along the path that's specified by each /I compiler option.
 	// 2) When compiling occurs on the command line, along the paths that are specified by the INCLUDE environment variable.
 	//----------------------------------------------------------------------------------------------------------------------
-	int Context::resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedDir) const
+	int Context::resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedFileDir, std::wstring& resolvedFilePath) const
 	{
 		assert(filePathIsAbsolute(inclusionSpec) == false);
 
@@ -89,8 +89,10 @@ namespace hdrz
 				absFileName += inclusionSpec;
 				if(fileExists(absFileName.c_str()))
 				{
-					resolvedDir = rItem.m_fileDir;
-					return 0;
+					resolvedFileDir = rItem.m_fileDir;
+					resolvedFilePath = absFileName;
+					canonicalizeFilePath(resolvedFilePath);
+					return HDRZ_ERR_OK;
 				}
 			}
 		}
@@ -98,12 +100,16 @@ namespace hdrz
 		// Along the path that's specified by each /I compiler option.
 		for(size_t i = 0; i < m_incDirsCount; ++i)
 		{
-			absFileName = m_incDirs[i];
+			sz incDir = m_incDirs[i];
+			absFileName = incDir;
+			absFileName += fileSeparator;
 			absFileName += inclusionSpec;
 			if(fileExists(absFileName.c_str()))
 			{
-				resolvedDir = absFileName;
-				return 0;
+				resolvedFileDir = incDir;
+				resolvedFilePath = absFileName;
+				canonicalizeFilePath(resolvedFilePath);
+				return HDRZ_ERR_OK;
 			}
 		}
 
@@ -111,24 +117,25 @@ namespace hdrz
 		// TODO
 
 		// Could not resolve the inclusion
-		resolvedDir.clear();
-		return 0;
+		resolvedFileDir.clear();
+		resolvedFilePath.clear();
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool Context::canInclude(sz absoluteFilePath) const
+	PreviouslyIncludedFile* Context::findPreviousInclude(sz absoluteFilePath)
 	{
-		for(size_t i = 0; i < m_included.size(); ++i)
+		for(size_t i = 0; i < m_prevIncluded.size(); ++i)
 		{
-			const PreviouslyIncludedFile& incl = m_included[i];
-			if((incl.m_filePath == absoluteFilePath) && (incl.m_onceOnly))
+			PreviouslyIncludedFile& prevInc = m_prevIncluded[i];
+			if(prevInc.m_filePath == absoluteFilePath)
 			{
-				return false;
+				return &prevInc;
 			}
 		}
-		return true;
+		return NULL;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -158,7 +165,7 @@ namespace hdrz
 				}
 			}
 		}
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -192,7 +199,7 @@ namespace hdrz
 				}
 			}
 		}
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -226,7 +233,7 @@ namespace hdrz
 				}
 			}
 		}
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -264,7 +271,7 @@ namespace hdrz
 				}
 			}
 		}
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -282,7 +289,7 @@ namespace hdrz
 		}
 		if(*fileStart != '#')
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		++fileStart;
 		while(isSpace(*fileStart))
@@ -291,7 +298,7 @@ namespace hdrz
 		}
 		if(wcsncmp(fileStart, L"include", HDRZ_STR_LEN(L"include")) != 0)
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		fileStart += HDRZ_STR_LEN(L"include");
 		while(isSpace(*fileStart))
@@ -301,7 +308,7 @@ namespace hdrz
 		const wchar_t quoteOpen = *fileStart;
 		if((quoteOpen != '\"') && (quoteOpen != '<'))
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		const wchar_t quoteClose = ((quoteOpen == '\"') ? '\"' : '>');
 		++fileStart;
@@ -310,14 +317,14 @@ namespace hdrz
 		{
 			if(isEndOfLine(fileEnd))
 			{
-				return 0;
+				return HDRZ_ERR_OK;
 			}
 			++fileEnd;
 		}
 
 		fileNameStart = fileStart;
 		fileNameLength = fileEnd - fileStart;
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 /*
 	//----------------------------------------------------------------------------------------------------------------------
@@ -335,7 +342,7 @@ namespace hdrz
 		}
 		if(*fileStart != '#')
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		++fileStart;
 		while(IsSpace(*fileStart))
@@ -344,7 +351,7 @@ namespace hdrz
 		}
 		if(wcsncmp(fileStart, L"include", HDRZ_STR_LEN(L"include")) != 0)
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		fileStart += HDRZ_STR_LEN(L"include");
 		while(IsSpace(*fileStart))
@@ -354,7 +361,7 @@ namespace hdrz
 		const wchar_t quoteOpen = *fileStart;
 		if((quoteOpen != '\"') && (quoteOpen != '<'))
 		{
-			return 0;
+			return HDRZ_ERR_OK;
 		}
 		const wchar_t quoteClose = ((quoteOpen == '\"') ? '\"' : '>');
 		++fileStart;
@@ -363,14 +370,14 @@ namespace hdrz
 		{
 			if(IsEndOfLine(fileEnd))
 			{
-				return 0;
+				return HDRZ_ERR_OK;
 			}
 			++fileEnd;
 		}
 
 		fileNameStart = fileStart;
 		fileNameLength = fileEnd - fileStart;
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 */
 	//----------------------------------------------------------------------------------------------------------------------
@@ -392,13 +399,7 @@ namespace hdrz
 		else
 		{
 			std::wstring absIncFileDir;
-			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, quoted, absIncFileDir), L"error resolving inclusion " << ctxt.m_walkStack.getTop().m_filePath);
-			if(absIncFileDir.empty() == false)
-			{
-				absIncFilePath = absIncFileDir;
-				absIncFilePath += fileSeparator;
-				absIncFilePath += inclusionSpec;
-			}
+			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, quoted, absIncFileDir, absIncFilePath), L"error resolving inclusion " << ctxt.m_walkStack.getTop().m_filePath);
 		}
 		if(absIncFilePath.empty())
 		{
@@ -408,23 +409,36 @@ namespace hdrz
 			}
 			out << line << std::endl;
 		}
-		else if(ctxt.canInclude(absIncFilePath.c_str()) == false)
-		{
-			if(ctxt.m_comments)
-			{
-				out << L"// HDRZ : include skipped as it should be included once only" << std::endl;
-			}
-			out << L"// " << line << std::endl;
-		}
 		else
 		{
-			bool detectOnce = false;
-			hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), &detectOnce),
-				L"error walking file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
-			
+			PreviouslyIncludedFile* prevFile = ctxt.findPreviousInclude(absIncFilePath.c_str());
+			bool prevIncluded = (prevFile != NULL);
+			bool prevOnceOnly = ((prevFile != NULL) && prevFile->m_onceOnly);
+
+			if(prevOnceOnly)
+			{
+				if(ctxt.m_comments)
+				{
+					out << L"// HDRZ : include skipped as it should be included once only" << std::endl;
+				}
+				out << L"// " << line << std::endl;
+			}
+			else
+			{
+				if(prevIncluded)
+				{
+					hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), NULL), L"error walking previously included file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
+				}
+				else
+				{
+					bool detectOnce = false;
+					hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), &detectOnce), L"error walking file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
+					ctxt.m_prevIncluded.push_back(PreviouslyIncludedFile(absIncFilePath, detectOnce));
+				}
+			}
 		}
 
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -524,7 +538,7 @@ namespace hdrz
 			// basic line, simply copied
 			out << line << std::endl;
 		}
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -536,6 +550,7 @@ namespace hdrz
 		assert(filePath[0] != 0);
 		assert(filePathIsAbsolute(filePath));
 
+		// Could be removed ?
 		std::wstring canonFilePath(filePath);
 		canonicalizeFilePath(canonFilePath);
 
@@ -581,8 +596,12 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	int process(const Input& in)
 	{
+		int err = HDRZ_ERR_OK;
+
 		Context ctxt;
 		ctxt.m_comments = in.m_comments;
+		ctxt.m_incDirs = in.m_incDirs;
+		ctxt.m_incDirsCount = in.m_incDirsCount;
 		for(size_t i = 0; i < in.m_definesCount; ++i)
 		{
 			ctxt.m_defined.push_back(in.m_defines[i]);
@@ -599,10 +618,21 @@ namespace hdrz
 		for(size_t i = 0; i < in.m_srcFilesCount; ++i)
 		{
 			sz srcFile = in.m_srcFiles[i];
-			hdrzReturnIfError(walkFile(ctxt, out, srcFile, NULL), L"error walking source file #" << i << " " << srcFile);
+
+			std::wstring resolvedSrcFileDir;
+			std::wstring resolvedSrcFilePath;
+			hdrzReturnIfError(ctxt.resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
+			if(resolvedSrcFilePath.empty())
+			{
+				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
+				break;
+			}
+			canonicalizeFilePath(resolvedSrcFilePath);
+			hdrzReturnIfError(walkFile(ctxt, out, resolvedSrcFilePath.c_str(), NULL), L"error walking source file #" << i << " " << srcFile);
 		}
 		out.close();
-		return 0;
+
+		return err;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -721,7 +751,7 @@ namespace hdrz
 			}
 		}
 
-		return 0;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------

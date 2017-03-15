@@ -3,11 +3,18 @@
 #include <vector>
 #include <string>
 
+// Syntax comments
+// File : in c:\\foo\\bar\\fuzz.h
+// * 'file path' stands for c:\\foo\\bar\\fuzz.h
+// * 'file name' stands for fuzz.h
+// * 'file dir' stands for c:\\foo\\bar
+
 #define HDRZ_STR_LEN(str) ((sizeof(str) / sizeof(str[0])) - 1)
 
 #define HDRZ_WIN_EOL L"\r\n"
 #define HDRZ_UNIX_EOL L"\n"
 
+#define HDRZ_ERR_OK 0
 #define HDRZ_ERR_UNQUOTE_ARG_LENGTH -2
 #define HDRZ_ERR_UNQUOTE_DETECT -3
 #define HDRZ_ERR_DETECTINCLUDE_LINE -4
@@ -20,6 +27,7 @@
 #define HDRZ_ERR_MULTIPLE_DST_FILES -11
 #define HDRZ_ERR_NO_OUT_FILE -12
 #define HDRZ_ERR_INVALID_FILE_PATH -13
+#define HDRZ_ERR_IN_FILE_NOT_FOUND -14
 // errno_t copyErr = wcsncpy_s(file, MAX_PATH, fileStart, fileLength);
 // if(copyErr != 0)
 // {
@@ -117,18 +125,19 @@ namespace hdrz
 		Context();
 		/// Locate the file for an inclusion like #include "../foo.h" or #include <framework/foo.h>
 		/// \param[in] inclusionSpec  Content of the inclusion instruction, without quotes, like '../foo.h' or 'framework/foo.h'
-		/// \param[in] inclusionContainerFileDir  Absolute directory of the file that contains the inclusion instruction.
 		/// \param[in] quoted  Use of double quotes (true) or angle-brackets (false)
-		/// \return  Absolute directory which contains 
-		int resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedDir) const;
-		bool canInclude(sz absoluteFilePath) const;
+		/// \param[out] resolvedFileDir  Directory where the include spec could be resolved. Empty if the include spec could not be resolved.
+		/// \param[out] resolvedFilePath  Canonicalized resolved file path. Empty if the include spec could not be resolved.
+		/// \return  Error code, 0 if no error encountered.
+		int resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedFileDir, std::wstring& resolvedFilePath) const;
+		PreviouslyIncludedFile* findPreviousInclude(sz absoluteFilePath);
 		const std::wstring& getCurrentFilePath() const { return m_walkStack.getTop().m_filePath; }
 
 		bool m_comments;
 		sz* m_incDirs;
 		size_t m_incDirsCount;
 		std::vector<std::wstring> m_defined;
-		std::vector<PreviouslyIncludedFile> m_included;
+		std::vector<PreviouslyIncludedFile> m_prevIncluded;
 
 		WalkStack m_walkStack;
 	};
