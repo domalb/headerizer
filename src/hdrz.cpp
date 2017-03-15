@@ -16,6 +16,17 @@ static const wchar_t fileWrongSeparator = L'\\';
 
 namespace hdrz
 {
+	bool verbose = false;
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	PreviouslyIncludedFile::PreviouslyIncludedFile(const std::wstring& filePath, bool onceOnly)
+		: m_filePath(filePath)
+		, m_onceOnly(onceOnly)
+	{
+	}
+
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
@@ -107,16 +118,153 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	bool Context::hasIncluded(sz absoluteFileName) const
+	bool Context::canInclude(sz absoluteFilePath) const
 	{
 		for(size_t i = 0; i < m_included.size(); ++i)
 		{
-			if(m_included[i] == absoluteFileName)
+			const PreviouslyIncludedFile& incl = m_included[i];
+			if((incl.m_filePath == absoluteFilePath) && (incl.m_onceOnly))
 			{
-				return true;
+				return false;
 			}
 		}
-		return false;
+		return true;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int detectOncePragma(sz line, bool& detected)
+	{
+		detected = false;
+
+		sz readPos = line;
+		skipSpaces(readPos);
+		if(*readPos == '#')
+		{
+			++readPos;
+			skipSpaces(readPos);
+			if(wcsncmp(readPos, L"pragma", HDRZ_STR_LEN(L"pragma")) == 0)
+			{
+				readPos += HDRZ_STR_LEN(L"pragma");
+				skipSpaces(readPos);
+				if(wcsncmp(readPos, L"once", HDRZ_STR_LEN(L"once")) == 0)
+				{
+					skipSpaces(readPos);
+					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
+					{
+						detected = true;
+					}
+				}
+			}
+		}
+		return 0;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	// detect pattern like [ ]#[ ]ifndef[ ][_]<fileNameNoExt>?
+	//----------------------------------------------------------------------------------------------------------------------
+	int detectOnceGuard1(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected)
+	{
+		detected = false;
+
+		sz readPos = line;
+		skipSpaces(readPos);
+		if(*readPos == '#')
+		{
+			++readPos;
+			skipSpaces(readPos);
+			if(wcsncmp(readPos, L"ifndef", HDRZ_STR_LEN(L"ifndef")) == 0)
+			{
+				readPos += HDRZ_STR_LEN(L"ifndef");
+				skipSpaces(readPos);
+				while(*readPos == '_')
+				{
+					++readPos;
+				}
+				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				{
+// 					skipSpaces(readPos);
+// 					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
+					{
+						detected = true;
+					}
+				}
+			}
+		}
+		return 0;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	// detect pattern like [ ]#[ ]define[ ][_]<fileNameNoExt>?
+	//----------------------------------------------------------------------------------------------------------------------
+	int detectOnceGuard2(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected)
+	{
+		detected = false;
+
+		sz readPos = line;
+		skipSpaces(readPos);
+		if(*readPos == '#')
+		{
+			++readPos;
+			skipSpaces(readPos);
+			if(wcsncmp(readPos, L"define", HDRZ_STR_LEN(L"define")) == 0)
+			{
+				readPos += HDRZ_STR_LEN(L"define");
+				skipSpaces(readPos);
+				while(*readPos == '_')
+				{
+					++readPos;
+				}
+				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				{
+// 					skipSpaces(readPos);
+// 					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
+					{
+						detected = true;
+					}
+				}
+			}
+		}
+		return 0;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	// detect pattern like [ ]#[ ]endif[ ]//[ ][_]<fileNameNoExt>?
+	//----------------------------------------------------------------------------------------------------------------------
+	int detectOnceGuard3(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected)
+	{
+		detected = false;
+
+		sz readPos = line;
+		skipSpaces(readPos);
+		if(*readPos == '#')
+		{
+			++readPos;
+			skipSpaces(readPos);
+			if(wcsncmp(readPos, L"endif", HDRZ_STR_LEN(L"endif")) == 0)
+			{
+				readPos += HDRZ_STR_LEN(L"endif");
+				skipSpaces(readPos);
+				if((readPos[0] == '/') && ((readPos[1] == '/') || (readPos[1] == '*')))
+				{
+					readPos += 2;
+				}
+				skipSpaces(readPos);
+				while(*readPos == '_')
+				{
+					++readPos;
+				}
+				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				{
+//					skipSpaces(readPos);
+					{
+						detected = true;
+					}
+				}
+			}
+		}
+		return 0;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -228,7 +376,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose)
+	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted)
 	{
 		assert(ctxt.m_walkStack.empty() == false);
 
@@ -244,7 +392,7 @@ namespace hdrz
 		else
 		{
 			std::wstring absIncFileDir;
-			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, quoted, absIncFileDir), L"Error resolving inclusion " << ctxt.m_walkStack.getTop().m_filePath);
+			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, quoted, absIncFileDir), L"error resolving inclusion " << ctxt.m_walkStack.getTop().m_filePath);
 			if(absIncFileDir.empty() == false)
 			{
 				absIncFilePath = absIncFileDir;
@@ -260,10 +408,20 @@ namespace hdrz
 			}
 			out << line << std::endl;
 		}
+		else if(ctxt.canInclude(absIncFilePath.c_str()) == false)
+		{
+			if(ctxt.m_comments)
+			{
+				out << L"// HDRZ : include skipped as it should be included once only" << std::endl;
+			}
+			out << L"// " << line << std::endl;
+		}
 		else
 		{
-			hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), verbose),
-				L"error walking file " << absIncFilePath << L" included in " << ctxt.m_walkStack.getTop().m_filePath);
+			bool detectOnce = false;
+			hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), &detectOnce),
+				L"error walking file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
+			
 		}
 
 		return 0;
@@ -272,41 +430,99 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool verbose)
+	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool* detectOnce)
 	{
-		int lineIndex = 0;
+		// Once detection init
+		bool detectOnceNeeded = (detectOnce != NULL);
+		bool detectedOnceGuard1 = false;
+		bool detectedOnceGuard2 = false;
+		bool detectedOnceGuard3 = false;
+		wchar_t fileNameNoExt [MAX_PATH] = { 0 };
+		size_t filenameNoExtLength = 0;
+		if(detectOnceNeeded)
+		{
+			const std::wstring& fileName = ctxt.getCurrentFilePath();
+			strCpy(fileNameNoExt, fileName.c_str());
+			wchar_t* dot = wcschr(fileNameNoExt, L'.');
+			if(dot != NULL)
+			{
+				*dot = 0;
+				filenameNoExtLength = dot - sz(fileNameNoExt);
+			}
+			else
+			{
+				filenameNoExtLength = fileName.length();
+			}
+			detectOnce = false;
+		}
 
+		// Lines iteration
 		static const size_t lineLengthMax = 2048;
+		int lineIndex = 0;
 		wchar_t line [lineLengthMax];
 		
 		while((in.bad() || in.eof()) == false)
 		{
 			in.getline(line, lineLengthMax);
 
+			if(detectOnceNeeded)
+			{
+				// detect pragma once
+				bool detectedOncePragma = false;
+				hdrzReturnIfError(detectOncePragma(line, detectedOncePragma), L"error detecting once pragma while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+				if(detectedOncePragma)
+				{
+					*detectOnce = true;
+					detectOnceNeeded = false;
+					continue;
+				}
+
+				// detect guards
+				if(detectedOnceGuard2)
+				{
+					hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+					if(detectedOnceGuard3)
+					{
+						*detectOnce = true;
+						detectOnceNeeded = false;
+						continue;
+					}
+				}
+				else if(detectedOnceGuard1)
+				{
+					hdrzReturnIfError(detectOnceGuard2(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard2), L"error detecting once guard2 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+					if(detectedOnceGuard2)
+					{
+						continue;
+					}
+				}
+				else
+				{
+					hdrzReturnIfError(detectOnceGuard1(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard1), L"error detecting once guard1 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+					if(detectedOnceGuard1)
+					{
+						continue;
+					}
+				}
+			}
+
+			// detect include
 			sz fileNameStart;
 			size_t fileNameLength;
-			int detect = detectIncludeLine(line, fileNameStart, fileNameLength);
-			if(detect < 0)
-			{
-				if(verbose)
-				{
-					std::wcout << L"error detecting include line while walking line " << lineIndex << L" in file " << ctxt.m_walkStack.getTop().m_filePath << std::endl;
-				}
-				return detect;
-			}
-			else if(fileNameStart != NULL)
+			hdrzReturnIfError(detectIncludeLine(line, fileNameStart, fileNameLength), L"error detecting include line while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+			bool detectedInclude = (fileNameStart != NULL);
+			if(detectedInclude)
 			{
 				// Include line found
 				wchar_t inclusionSpec [MAX_PATH];
-				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength, verbose), L"error copying include file name while walking line " << lineIndex << L" in file " << ctxt.m_walkStack.getTop().m_filePath);
+				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength), L"error copying include file name while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
 				bool quoted = (*(fileNameStart + fileNameLength) == L'\"');
-				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, inclusionSpec, quoted, verbose), L"error handling include of " << inclusionSpec << L" in " << ctxt.m_walkStack.getTop().m_filePath);
+				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, inclusionSpec, quoted), L"error handling include of " << inclusionSpec << L" in " << ctxt.getCurrentFilePath());
+				continue;
 			}
-			else
-			{
-				// basic line
-				out << line << std::endl;
-			}
+
+			// basic line, simply copied
+			out << line << std::endl;
 		}
 		return 0;
 	}
@@ -314,7 +530,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool verbose)
+	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool* detectOnce)
 	{
 		assert(filePath != NULL);
 		assert(filePath[0] != 0);
@@ -327,10 +543,7 @@ namespace hdrz
 		splitFilePathToDirAndName(canonFilePath.c_str(), fileDir, fileName);
 		if(fileDir.empty() || fileName.empty())
 		{
-			if(verbose)
-			{
-				std::wcout << L"Error splitting following path to directory & name : " << fileName << std::endl;
-			}
+			hdrzLogError(L"error splitting following path to directory & name : " << fileName);
 			return HDRZ_ERR_INVALID_FILE_PATH;
 		}
 
@@ -338,28 +551,25 @@ namespace hdrz
 		ctxt.m_walkStack.push(fileDir, fileName);
 		if(ctxt.m_comments)
 		{
-			out << L"// HDRZ : begin of " << ctxt.m_walkStack.getTop().m_filePath << std::endl;
+			out << L"// HDRZ : begin of " << ctxt.getCurrentFilePath() << std::endl;
 		}
 
 		std::wifstream in;
 		in.open(filePath);
 		if((in.is_open() == false) || in.bad())
 		{
-			if(verbose)
-			{
-				std::wcout << L"error opening read file " << canonFilePath << std::endl;
-			}
+			hdrzLogError(L"error opening read file " << canonFilePath);
 			ret = HDRZ_ERR_OPEN_IN_FILE;
 		}
 		else
 		{
-			ret = walkFileStream(ctxt, out, in, verbose);
+			ret = walkFileStream(ctxt, out, in, detectOnce);
 			in.close();
 		}
 
 		if(ctxt.m_comments)
 		{
-			out << L"// HDRZ : end of " << ctxt.m_walkStack.getTop().m_filePath << std::endl;
+			out << L"// HDRZ : end of " << ctxt.getCurrentFilePath() << std::endl;
 		}
 		ctxt.m_walkStack.pop();
 
@@ -369,7 +579,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int process(const Input& in, bool verbose)
+	int process(const Input& in)
 	{
 		Context ctxt;
 		ctxt.m_comments = in.m_comments;
@@ -382,17 +592,14 @@ namespace hdrz
 		out.open(in.m_outFile, std::wofstream::out);
 		if((out.is_open() == false) || out.bad())
 		{
-			if(verbose)
-			{
-				std::wcout << L"error opening output file " << in.m_outFile << std::endl;
-			}
+			hdrzLogError(L"error opening output file " << in.m_outFile);
 			return HDRZ_ERR_OPEN_OUT_FILE;
 		}
 
 		for(size_t i = 0; i < in.m_srcFilesCount; ++i)
 		{
 			sz srcFile = in.m_srcFiles[i];
-			hdrzReturnIfError(walkFile(ctxt, out, srcFile, verbose), L"error walking source file #" << i << " " << srcFile);
+			hdrzReturnIfError(walkFile(ctxt, out, srcFile, NULL), L"error walking source file #" << i << " " << srcFile);
 		}
 		out.close();
 		return 0;
@@ -430,7 +637,7 @@ namespace hdrz
 	void canonicalizeFilePath(sz in, std::wstring& out)
 	{
 		wchar_t tmpBuff1 [MAX_PATH];
-		strCpy(tmpBuff1, in, false);
+		strCpy(tmpBuff1, in);
 		wchar_t* val = tmpBuff1;
 		while(*val != 0)
 		{
@@ -477,7 +684,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int getUnquoted(sz arg, wchar_t* buffer, bool verbose)
+	int getUnquoted(sz arg, wchar_t* buffer)
 	{
 		const wchar_t* val = arg;
 
@@ -523,6 +730,17 @@ namespace hdrz
 	bool isSpace(wchar_t c)
 	{
 		return ((c == L' ') || (c == L'\t'));
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	void skipSpaces(wchar_t const*& p)
+	{
+		while(isSpace(*p))
+		{
+			++p;
+		}
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------

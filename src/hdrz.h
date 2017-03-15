@@ -34,6 +34,8 @@
 // 	}
 // 	return HDRZ_ERR_DETECTINCLUDE_LINE;
 // }
+#define hdrzLogInfo(x_msg) if(hdrz::verbose) { std::wcout << L"CTRC: " << x_msg << std::endl; }
+#define hdrzLogError(x_msg) if(hdrz::verbose) { std::wcerr << L"CTRC: " << x_msg << std::endl; }
 
 #define hdrzReturnIfError(expression, msg) _hdrzReturnIfError(expression, msg, __err##__LINE__)
 #define _hdrzReturnIfError(expression, msg, errName) \
@@ -41,10 +43,7 @@
 		int errName = (expression); \
 		if(errName < 0) \
 		{ \
-			if(verbose) \
-			{ \
-				std::wcout << msg << std::endl; \
-			} \
+			hdrzLogError(msg); \
 			return errName; \
 		} \
 	}
@@ -52,6 +51,8 @@
 namespace hdrz
 {
 	typedef const wchar_t* sz;
+
+	extern bool verbose;
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
@@ -66,6 +67,16 @@ namespace hdrz
 		sz* m_srcFiles;
 		size_t m_srcFilesCount;
 		sz m_outFile;
+	};
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	struct PreviouslyIncludedFile
+	{
+		PreviouslyIncludedFile(const std::wstring& filePath, bool onceOnly);
+		std::wstring m_filePath;
+		bool m_onceOnly;
 	};
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -110,23 +121,27 @@ namespace hdrz
 		/// \param[in] quoted  Use of double quotes (true) or angle-brackets (false)
 		/// \return  Absolute directory which contains 
 		int resolveInclusion(sz inclusionSpec, bool quoted, std::wstring& resolvedDir) const;
-		bool hasIncluded(sz absoluteFileName) const;
+		bool canInclude(sz absoluteFilePath) const;
 		const std::wstring& getCurrentFilePath() const { return m_walkStack.getTop().m_filePath; }
 
 		bool m_comments;
 		sz* m_incDirs;
 		size_t m_incDirsCount;
 		std::vector<std::wstring> m_defined;
-		std::vector<std::wstring> m_included;
+		std::vector<PreviouslyIncludedFile> m_included;
 
 		WalkStack m_walkStack;
 	};
 
+	int detectOncePragma(sz line, bool& detected);
+	int detectOnceGuard1(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected);
+	int detectOnceGuard2(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected);
+	int detectOnceGuard3(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected);
 	int detectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength);
-	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted, bool verbose);
-	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool verbose);
-	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool verbose);
-	int process(const Input& in, bool verbose);
+	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted);
+	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool* detectOnce);
+	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool* detectOnce);
+	int process(const Input& in);
 
 	// Utils
 	bool filePathIsAbsolute(sz path);
@@ -134,15 +149,16 @@ namespace hdrz
 	void canonicalizeFilePath(sz in, std::wstring& out);
 	void canonicalizeFilePath(std::wstring& inOut);
 	bool fileExists(sz fileName);
-	int getUnquoted(sz arg, wchar_t* buffer, bool verbose);
+	int getUnquoted(sz arg, wchar_t* buffer);
 	bool isSpace(wchar_t c);
+	void skipSpaces(wchar_t const*& p);
 	bool isEndOfLine(sz line);
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int strCpy(wchar_t(&dst)[t_stLength], sz src, bool verbose)
+	inline int strCpy(wchar_t(&dst)[t_stLength], sz src)
 	{
 		errno_t copyErr = wcscpy_s(dst, src);
 		if(copyErr == 0)
@@ -154,31 +170,22 @@ namespace hdrz
 			switch(copyErr)
 			{
 			case STRUNCATE:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : STRUNCATE" << std::endl;
+					hdrzLogError(L"error copying string : STRUNCATE");
+					return HDRZ_ERR_STRCPY_TRUNCATE;
 				}
-				return HDRZ_ERR_STRCPY_TRUNCATE;
-			}
 			break;
 			case ERANGE:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : ERANGE" << std::endl;
+					hdrzLogError(L"error copying string : ERANGE");
+					return HDRZ_ERR_STRCPY_LENGTH;
 				}
-				return HDRZ_ERR_STRCPY_LENGTH;
-			}
 			break;
 			default:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : " << copyErr << std::endl;
+					hdrzLogError(L"error copying string : " << copyErr);
+					return HDRZ_ERR_STRCPY_UNEXPECTED;
 				}
-				return HDRZ_ERR_STRCPY_UNEXPECTED;
-			}
 			break;
 			}
 		}
@@ -188,7 +195,7 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int strNCpy(wchar_t(&dst)[t_stLength], sz src, size_t length, bool verbose)
+	inline int strNCpy(wchar_t(&dst)[t_stLength], sz src, size_t length)
 	{
 		errno_t copyErr = wcsncpy_s(dst, src, length);
 		if(copyErr == 0)
@@ -200,31 +207,22 @@ namespace hdrz
 			switch(copyErr)
 			{
 			case STRUNCATE:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : STRUNCATE" << std::endl;
+					hdrzLogError(L"error copying " << length << L" of string : STRUNCATE");
+					return HDRZ_ERR_STRCPY_TRUNCATE;
 				}
-				return HDRZ_ERR_STRCPY_TRUNCATE;
-			}
 			break;
 			case ERANGE:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : ERANGE" << std::endl;
+					hdrzLogError(L"error copying " << length << L" of string : ERANGE");
+					return HDRZ_ERR_STRCPY_LENGTH;
 				}
-				return HDRZ_ERR_STRCPY_LENGTH;
-			}
 			break;
 			default:
-			{
-				if(verbose)
 				{
-					std::wcout << L"error copying detected include file : " << copyErr << std::endl;
+					hdrzLogError(L"error copying " << length << L" of string : " << copyErr);
+					return HDRZ_ERR_STRCPY_UNEXPECTED;
 				}
-				return HDRZ_ERR_STRCPY_UNEXPECTED;
-			}
 			break;
 			}
 		}
@@ -234,7 +232,7 @@ namespace hdrz
 	//
 	//----------------------------------------------------------------------------------------------------------------------
 	template <size_t t_stLength>
-	inline int strCat(wchar_t(&dst)[t_stLength], sz src, bool verbose)
+	inline int strCat(wchar_t(&dst)[t_stLength], sz src)
 	{
 		errno_t copyErr = wcscat_s(dst, src);
 		if(copyErr == 0)
@@ -247,28 +245,19 @@ namespace hdrz
 			{
 			case STRUNCATE:
 			{
-				if(verbose)
-				{
-					std::wcout << L"error appending detected include file : STRUNCATE" << std::endl;
-				}
+				hdrzLogError(L"error appending string : STRUNCATE");
 				return HDRZ_ERR_STRCPY_TRUNCATE;
 			}
 			break;
 			case ERANGE:
 			{
-				if(verbose)
-				{
-					std::wcout << L"error appending detected include file : ERANGE" << std::endl;
-				}
+				hdrzLogError(L"error appending string : ERANGE");
 				return HDRZ_ERR_STRCPY_LENGTH;
 			}
 			break;
 			default:
 			{
-				if(verbose)
-				{
-					std::wcout << L"error appending detected include file : " << copyErr << std::endl;
-				}
+				hdrzLogError(L"error appending string : " << copyErr);
 				return HDRZ_ERR_STRCPY_UNEXPECTED;
 			}
 			break;

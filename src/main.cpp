@@ -35,14 +35,13 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	}
 
 	// Test for verbose argument
-	bool verbose = false;
 	for(int i = 1; i < argc; ++i)
 	{
 		const wchar_t* arg = argv[i];
 		if((arg != NULL) && (_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0))
 		{
 			std::wcout << L"verbose mode detected" << std::endl;
-			verbose = true;
+			hdrz::verbose = true;
 		}
 	}
 
@@ -85,14 +84,11 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		{
 			if(workDir.empty() == false)
 			{
-				if(verbose)
-				{
-					std::wcout << L"multiple working directories detected" << std::endl;
-				}
+				hdrzLogError(L"multiple working directories detected");
 				return HDRZ_ERR_MULTIPLE_WORK_DIRS;
 			}
 			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -101,7 +97,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -111,7 +107,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -121,7 +117,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -131,7 +127,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
 			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -142,13 +138,10 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		{
 			if(acOutFile[0] != 0)
 			{
-				if(verbose)
-				{
-					std::wcout << L"multiple destination files detected" << std::endl;
-				}
+				hdrzLogError(L"multiple destination files detected");
 				return HDRZ_ERR_MULTIPLE_DST_FILES;
 			}
-			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acOutFile, verbose);
+			int unquiote = hdrz::getUnquoted(arg + HDRZ_ARG_OUT_FILE_LENGTH, acOutFile);
 			if(unquiote != 0)
 			{
 				return unquiote;
@@ -162,20 +155,17 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 		if(argSrcFiles.size() == 1)
 		{
 			hdrz::sz srcFileName = argSrcFiles[0].c_str();
-			hdrzReturnIfError(hdrz::strCpy(acOutFile, srcFileName, verbose), L"error building output filename");
-			hdrzReturnIfError(hdrz::strCat(acOutFile, L".hdrz", verbose), L"error adding tag to output filename");
+			hdrzReturnIfError(hdrz::strCpy(acOutFile, srcFileName), L"error building output filename");
+			hdrzReturnIfError(hdrz::strCat(acOutFile, L".hdrz"), L"error adding tag to output filename");
 			hdrz::sz srcFileExt = wcsrchr(srcFileName, '.');
 			if(srcFileExt != NULL)
 			{
-				hdrzReturnIfError(hdrz::strCat(acOutFile, srcFileExt, verbose), L"error adding extention to output filename");
+				hdrzReturnIfError(hdrz::strCat(acOutFile, srcFileExt), L"error adding extention to output filename");
 			}
 		}
 		else
 		{
-			if(verbose)
-			{
-				std::wcout << L"no destination file" << std::endl;
-			}
+			hdrzLogError(L"no destination file");
 			return HDRZ_ERR_NO_OUT_FILE;
 		}
 	}
@@ -203,7 +193,7 @@ int wmain(int argc, wchar_t *argv[] /*, wchar_t *envp[]*/)
 	in.m_outFile = acOutFile;
 
 	// Invoke process
-	int process = hdrz::process(in, verbose);
+	int process = hdrz::process(in);
 
 	 return process;
 }
