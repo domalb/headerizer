@@ -163,11 +163,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="hdrz.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="hdrzImpl.cpp" />
+    <ClCompile Include="hdrzMain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hdrz.h" />
+    <ClInclude Include="hdrzArgs.h" />
+    <ClInclude Include="hdrzImpl.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

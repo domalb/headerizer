@@ -1,7 +1,6 @@
-#include "hdrz.h"
+#include "hdrzImpl.h"
 
 #include <sys/stat.h>
-// #include <unistd.h>
 #include <windows.h>
 #include <assert.h>
 #include <shlwapi.h>
@@ -17,6 +16,25 @@ static const wchar_t fileWrongSeparator = L'\\';
 namespace hdrz
 {
 	bool verbose = false;
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	bool getExecutableDirectory(wchar_t* directoryPath)
+	{
+		BOOL get = GetModuleFileNameW(NULL, directoryPath, MAX_PATH);
+		if(get != FALSE)
+		{
+			wchar_t* found = wcsrchr(directoryPath, fileSeparator);
+			if(found != NULL)
+			{
+				*found = 0;
+			}
+			return true;
+		}
+
+		return false;
+	}
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
@@ -151,11 +169,10 @@ namespace hdrz
 		{
 			++readPos;
 			skipSpaces(readPos);
-			if(wcsncmp(readPos, L"pragma", HDRZ_STR_LEN(L"pragma")) == 0)
+			if((readPos = skipSequence(true, readPos, L"pragma")) != NULL)
 			{
-				readPos += HDRZ_STR_LEN(L"pragma");
 				skipSpaces(readPos);
-				if(wcsncmp(readPos, L"once", HDRZ_STR_LEN(L"once")) == 0)
+				if((readPos = skipSequence(true, readPos, L"once")) != NULL)
 				{
 					skipSpaces(readPos);
 					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
@@ -181,15 +198,11 @@ namespace hdrz
 		{
 			++readPos;
 			skipSpaces(readPos);
-			if(wcsncmp(readPos, L"ifndef", HDRZ_STR_LEN(L"ifndef")) == 0)
+			if((readPos = skipSequence(true, readPos, L"ifndef")) != NULL)
 			{
-				readPos += HDRZ_STR_LEN(L"ifndef");
 				skipSpaces(readPos);
-				while(*readPos == '_')
-				{
-					++readPos;
-				}
-				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				readPos = skipChars(readPos, L'_');
+				if((readPos = skipSequence(false, readPos, filenameNoExt, filenameNoExtLength)) != NULL)
 				{
 // 					skipSpaces(readPos);
 // 					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
@@ -215,15 +228,11 @@ namespace hdrz
 		{
 			++readPos;
 			skipSpaces(readPos);
-			if(wcsncmp(readPos, L"define", HDRZ_STR_LEN(L"define")) == 0)
+			if((readPos = skipSequence(true, readPos, L"define")) != NULL)
 			{
-				readPos += HDRZ_STR_LEN(L"define");
 				skipSpaces(readPos);
-				while(*readPos == '_')
-				{
-					++readPos;
-				}
-				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				readPos = skipChars(readPos, L'_');
+				if((readPos = skipSequence(false, readPos, filenameNoExt, filenameNoExtLength)) != NULL)
 				{
 // 					skipSpaces(readPos);
 // 					if((readPos[0] == 0) || ((readPos[0] == '/') && (readPos[1] == '/')))
@@ -249,9 +258,8 @@ namespace hdrz
 		{
 			++readPos;
 			skipSpaces(readPos);
-			if(wcsncmp(readPos, L"endif", HDRZ_STR_LEN(L"endif")) == 0)
+			if((readPos = skipSequence(true, readPos, L"endif")) != NULL)
 			{
-				readPos += HDRZ_STR_LEN(L"endif");
 				skipSpaces(readPos);
 				if((readPos[0] == '/') && ((readPos[1] == '/') || (readPos[1] == '*')))
 				{
@@ -262,7 +270,7 @@ namespace hdrz
 				{
 					++readPos;
 				}
-				if(_wcsnicmp(readPos, filenameNoExt, filenameNoExtLength) == 0)
+				if((readPos = skipSequence(false, readPos, filenameNoExt, filenameNoExtLength)) != NULL)
 				{
 //					skipSpaces(readPos);
 					{
@@ -455,7 +463,7 @@ namespace hdrz
 		size_t filenameNoExtLength = 0;
 		if(detectOnceNeeded)
 		{
-			const std::wstring& fileName = ctxt.getCurrentFilePath();
+			const std::wstring& fileName = ctxt.getCurrentFileName();
 			strCpy(fileNameNoExt, fileName.c_str());
 			wchar_t* dot = wcschr(fileNameNoExt, L'.');
 			if(dot != NULL)
@@ -467,7 +475,7 @@ namespace hdrz
 			{
 				filenameNoExtLength = fileName.length();
 			}
-			detectOnce = false;
+			*detectOnce = false;
 		}
 
 		// Lines iteration
@@ -479,9 +487,17 @@ namespace hdrz
 		{
 			in.getline(line, lineLengthMax);
 
+			sz firstNonSpace(line);
+			if(*skipSpaces(firstNonSpace) == 0)
+			{
+				// empty line, simply copied
+				out << line << std::endl;
+				continue;
+			}
+
 			if(detectOnceNeeded)
 			{
-				// detect pragma once
+				// detect once pragma
 				bool detectedOncePragma = false;
 				hdrzReturnIfError(detectOncePragma(line, detectedOncePragma), L"error detecting once pragma while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
 				if(detectedOncePragma)
@@ -491,7 +507,7 @@ namespace hdrz
 					continue;
 				}
 
-				// detect guards
+				// detect once guards
 				if(detectedOnceGuard2)
 				{
 					hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
@@ -598,6 +614,7 @@ namespace hdrz
 	{
 		int err = HDRZ_ERR_OK;
 
+		// setup context
 		Context ctxt;
 		ctxt.m_comments = in.m_comments;
 		ctxt.m_incDirs = in.m_incDirs;
@@ -607,14 +624,78 @@ namespace hdrz
 			ctxt.m_defined.push_back(in.m_defines[i]);
 		}
 
+		// resolve output file path if required
+		sz outFile = in.m_outFile;
+		bool unspecifiedOutFile = ((outFile == NULL) || (*outFile == 0));
+		std::wstring resolvedOutFilePath;
+		if(unspecifiedOutFile || (filePathIsAbsolute(outFile) == false))
+		{
+			if(in.m_srcFilesCount == 1)
+			{
+				// out put file path built from the single source file path
+				sz srcFile = in.m_srcFiles[0];
+				std::wstring resolvedSrcFileDir;
+				std::wstring resolvedSrcFilePath;
+				hdrzReturnIfError(ctxt.resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
+				if(resolvedSrcFileDir.empty())
+				{
+					hdrzLogError(L"error resolving single source file path for building output file path");
+					return HDRZ_ERR_IN_FILE_NOT_FOUND;
+				}
+				if(unspecifiedOutFile)
+				{
+					// append ".hdrz.h" to source file path
+					resolvedOutFilePath = resolvedSrcFilePath;
+					resolvedOutFilePath += L".hdrz.h";
+				}
+				else
+				{
+					// append relative output file path to source file directory
+					resolvedOutFilePath = resolvedSrcFileDir;
+					resolvedOutFilePath += fileSeparator;
+					resolvedSrcFilePath += outFile;
+					canonicalizeFilePath(resolvedSrcFilePath);
+				}
+			}
+			else
+			{
+				wchar_t exeDir[MAX_PATH] = { 0 };
+				if(getExecutableDirectory(exeDir) == false)
+				{
+					hdrzLogError(L"error getting executable directory for building output file path");
+					return HDRZ_ERR_CANT_GET_EXE_DIR;
+				}
+				else
+				{
+					resolvedOutFilePath = sz(exeDir);
+					resolvedOutFilePath += fileSeparator;
+					if(unspecifiedOutFile)
+					{
+						// file is simply named "hdrz.h" in executable directory
+						resolvedOutFilePath += L"hdrz.h";
+					}
+					else
+					{
+						// append relative output file path to executable directory
+						resolvedOutFilePath += outFile;
+						canonicalizeFilePath(resolvedOutFilePath);
+					}
+					hdrzLogInfo(L"output file path built from executable directory" << resolvedOutFilePath);
+				}
+			}
+			outFile = resolvedOutFilePath.c_str();
+		}
+
+		// open output file
 		std::wofstream out;
-		out.open(in.m_outFile, std::wofstream::out);
+		out.open(outFile, std::wofstream::out);
 		if((out.is_open() == false) || out.bad())
 		{
 			hdrzLogError(L"error opening output file " << in.m_outFile);
 			return HDRZ_ERR_OPEN_OUT_FILE;
 		}
 
+		// walk source files
 		for(size_t i = 0; i < in.m_srcFilesCount; ++i)
 		{
 			sz srcFile = in.m_srcFiles[i];
@@ -627,9 +708,10 @@ namespace hdrz
 				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
 				break;
 			}
-			canonicalizeFilePath(resolvedSrcFilePath);
 			hdrzReturnIfError(walkFile(ctxt, out, resolvedSrcFilePath.c_str(), NULL), L"error walking source file #" << i << " " << srcFile);
 		}
+
+		// close output file
 		out.close();
 
 		return err;
@@ -714,49 +796,6 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int getUnquoted(sz arg, wchar_t* buffer)
-	{
-		const wchar_t* val = arg;
-
-		bool quotes = (val[0] == L'"');
-		if(quotes)
-		{
-			++val;
-		}
-
-		wcscpy_s(buffer, MAX_PATH, val);
-
-		if(quotes)
-		{
-			size_t argLength = wcslen(val);
-			if(argLength < 2)
-			{
-				if(verbose)
-				{
-					std::wcout << L"invalid argument length" << std::endl;
-				}
-				return HDRZ_ERR_UNQUOTE_ARG_LENGTH;
-			}
-			else if(val[argLength - 1] != L'"')
-			{
-				if(verbose)
-				{
-					std::wcout << L"quote detection error for argument " << arg << std::endl;
-				}
-				return HDRZ_ERR_UNQUOTE_DETECT;
-			}
-			else
-			{
-				buffer[argLength - 1] = 0;
-			}
-		}
-
-		return HDRZ_ERR_OK;
-	}
-
-	//----------------------------------------------------------------------------------------------------------------------
-	//
-	//----------------------------------------------------------------------------------------------------------------------
 	bool isSpace(wchar_t c)
 	{
 		return ((c == L' ') || (c == L'\t'));
@@ -765,11 +804,40 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	void skipSpaces(wchar_t const*& p)
+	sz skipChars(sz val, wchar_t c)
 	{
-		while(isSpace(*p))
+		while(*val == c)
 		{
-			++p;
+			++val;
+		}
+		return val;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	sz skipSpaces(sz& val)
+	{
+		while(isSpace(*val))
+		{
+			++val;
+		}
+		return val;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	sz skipSequence(bool caseSensitive, sz val, sz sequence, size_t sequenceLength)
+	{
+		int compare = (caseSensitive ? wcsncmp(val, sequence, sequenceLength) : _wcsnicmp(val, sequence, sequenceLength));
+		if(compare == 0)
+		{
+			return val + sequenceLength;
+		}
+		else
+		{
+			return NULL;
 		}
 	}
 
