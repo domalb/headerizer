@@ -45,6 +45,14 @@ namespace hdrz
 {
 	typedef const wchar_t* sz;
 
+#ifdef _WIN32
+	static const wchar_t fileSeparator = L'\\';
+	static const wchar_t fileWrongSeparator = L'/';
+#else // _WIN
+	static const wchar_t fileSeparator = L'/';
+	static const wchar_t fileWrongSeparator = L'\\';
+#endif // _WIN
+
 	extern bool verbose;
 
 	struct Input

@@ -46,7 +46,6 @@ int hdrzUnquoteArg(const wchar_t* arg, wchar_t* buffer)
 int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 {
 	static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_INCLUDE_DIR);
-	static const size_t HDRZ_ARG_SRC_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_DIR);
 	static const size_t HDRZ_ARG_SRC_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_SRC_FILE);
 	static const size_t HDRZ_ARG_WORK_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_WORK_DIR);
 	static const size_t HDRZ_ARG_OUT_FILE_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_OUT_FILE);
@@ -115,52 +114,30 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 				hdrzLogError(L"multiple working directories detected");
 				return HDRZ_ERR_MULTIPLE_WORK_DIRS;
 			}
-			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
-			if(unquiote != 0)
-			{
-				return unquiote;
-			}
+			wchar_t buffer [MAX_PATH];
+			hdrzReturnIfError(hdrzUnquoteArg(arg + HDRZ_ARG_WORK_DIR_LENGTH, buffer), L"error unquoting argument " << i << " " << arg);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_INCLUDE_DIR, HDRZ_ARG_INCLUDE_DIR_LENGTH) == 0)
 		{
-			wchar_t acBuff [MAX_PATH];
-			int unquiote = hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
-			if(unquiote != 0)
-			{
-				return unquiote;
-			}
-			argIncDirs.push_back(acBuff);
-		}
-		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_DIR, HDRZ_ARG_SRC_DIR_LENGTH) == 0)
-		{
-			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
-			if(unquiote != 0)
-			{
-				return unquiote;
-			}
-			argSrcDirs.push_back(acBuff);
+			wchar_t buffer [MAX_PATH];
+			hdrzReturnIfError(hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, buffer), L"error unquoting argument " << i << " " << arg);
+			argIncDirs.push_back(buffer);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
 		{
-			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
-			if(unquiote != 0)
+			wchar_t buffer[MAX_PATH];
+			hdrzReturnIfError(hdrzUnquoteArg(arg + HDRZ_ARG_SRC_FILE_LENGTH, buffer), L"error unquoting argument " << i << " " << arg);
+			hdrz::sz firstWildCard = wcschr(buffer, L'*');
+			if(firstWildCard != NULL)
 			{
-				return unquiote;
+//				hdrz::sz lastSeparator = wcsrchr(buffer, hdrz::fileSeparator);
+				// TODO : check lastSeparator vs firstWildCard
+				// TODO : list folder
 			}
-			argSrcFiles.push_back(acBuff);
-		}
-		else if(_wcsnicmp(arg, HDRZ_ARG_SRC_FILE, HDRZ_ARG_SRC_FILE_LENGTH) == 0)
-		{
-			wchar_t acBuff[MAX_PATH];
-			int unquiote = hdrzUnquoteArg(arg + HDRZ_ARG_INCLUDE_DIR_LENGTH, acBuff);
-			if(unquiote != 0)
+			else
 			{
-				return unquiote;
+				argSrcFiles.push_back(buffer);
 			}
-			argSrcFiles.push_back(acBuff);
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_OUT_FILE, HDRZ_ARG_OUT_FILE_LENGTH) == 0)
 		{

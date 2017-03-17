@@ -5,14 +5,6 @@
 #include <assert.h>
 #include <shlwapi.h>
 
-#ifdef _WIN32
-static const wchar_t fileSeparator = L'\\';
-static const wchar_t fileWrongSeparator = L'/';
-#else // _WIN
-static const wchar_t fileSeparator = L'/';
-static const wchar_t fileWrongSeparator = L'\\';
-#endif // _WIN
-
 namespace hdrz
 {
 	bool verbose = false;

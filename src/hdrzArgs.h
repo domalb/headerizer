@@ -3,7 +3,6 @@
 #define _hdrzArgs_
 
 #define HDRZ_ARG_INCLUDE_DIR L"-i="
-#define HDRZ_ARG_SRC_DIR L"-d="
 #define HDRZ_ARG_SRC_FILE L"-f="
 #define HDRZ_ARG_WORK_DIR L"-w="
 #define HDRZ_ARG_OUT_FILE L"-o="
