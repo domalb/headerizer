@@ -479,11 +479,26 @@ namespace hdrz
 		{
 			in.getline(line, lineLengthMax);
 
+			// detect empty line
 			sz firstNonSpace(line);
 			if(*skipSpaces(firstNonSpace) == 0)
 			{
-				// empty line, simply copied
 				out << line << std::endl;
+				continue;
+			}
+
+			// detect include
+			sz fileNameStart;
+			size_t fileNameLength;
+			hdrzReturnIfError(detectIncludeLine(line, fileNameStart, fileNameLength), L"error detecting include line while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+			bool detectedInclude = (fileNameStart != NULL);
+			if(detectedInclude)
+			{
+				// Include line found
+				wchar_t inclusionSpec [MAX_PATH];
+				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength), L"error copying include file name while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+				bool quoted = (*(fileNameStart + fileNameLength) == L'\"');
+				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, inclusionSpec, quoted), L"error handling include of " << inclusionSpec << L" in " << ctxt.getCurrentFilePath());
 				continue;
 			}
 
@@ -507,40 +522,25 @@ namespace hdrz
 					{
 						*detectOnce = true;
 						detectOnceNeeded = false;
-						continue;
+// 						continue;
 					}
 				}
 				else if(detectedOnceGuard1)
 				{
 					hdrzReturnIfError(detectOnceGuard2(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard2), L"error detecting once guard2 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-					if(detectedOnceGuard2)
-					{
-						continue;
-					}
+// 					if(detectedOnceGuard2)
+// 					{
+// 						continue;
+// 					}
 				}
 				else
 				{
 					hdrzReturnIfError(detectOnceGuard1(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard1), L"error detecting once guard1 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-					if(detectedOnceGuard1)
-					{
-						continue;
-					}
+// 					if(detectedOnceGuard1)
+// 					{
+// 						continue;
+// 					}
 				}
-			}
-
-			// detect include
-			sz fileNameStart;
-			size_t fileNameLength;
-			hdrzReturnIfError(detectIncludeLine(line, fileNameStart, fileNameLength), L"error detecting include line while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-			bool detectedInclude = (fileNameStart != NULL);
-			if(detectedInclude)
-			{
-				// Include line found
-				wchar_t inclusionSpec [MAX_PATH];
-				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength), L"error copying include file name while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-				bool quoted = (*(fileNameStart + fileNameLength) == L'\"');
-				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, inclusionSpec, quoted), L"error handling include of " << inclusionSpec << L" in " << ctxt.getCurrentFilePath());
-				continue;
 			}
 
 			// basic line, simply copied

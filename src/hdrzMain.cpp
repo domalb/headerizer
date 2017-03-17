@@ -43,6 +43,62 @@ int hdrzUnquoteArg(const wchar_t* arg, wchar_t* buffer)
 //----------------------------------------------------------------------------------------------------------------------
 //
 //----------------------------------------------------------------------------------------------------------------------
+int hdrzGetDirectoryFiles(/*sz dirPath, */std::vector<std::wstring>& fileNames, hdrz::sz search)
+{
+// 		wchar_t pattern [MAX_PATH];
+// 		hdrzReturnIfError(strCpy(pattern, dirPath), L"Error building file search pattern");
+// 		hdrzReturnIfError(strCat(pattern, search), L"Error building file search pattern");
+	hdrz::sz pattern = search;
+
+	WIN32_FIND_DATAW data;
+	HANDLE found = ::FindFirstFileW(pattern, &data);
+	if(found == INVALID_HANDLE_VALUE)
+	{
+		if(::GetLastError() != ERROR_FILE_NOT_FOUND)
+		{
+			hdrzLogError(L"Error building file searching first file in directory with pattern" << hdrz::sz(pattern));
+			return -1;
+		}
+	}
+	else
+	{
+		while(true)
+		{
+			// Check if the found object matches flags
+			hdrz::sz name = data.cFileName;
+			if(((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) &&
+				((name[0] != 0) && (name[0] != L'.') || ((name[1] != 0) && (name[1] != L'.'))))
+			{
+				fileNames.push_back(name);
+			}
+
+			// Get the next
+			if(::FindNextFileW(found, &data) == FALSE)
+			{
+				if(::GetLastError() != ERROR_NO_MORE_FILES)
+				{
+					hdrzLogError(L"Error building file searching next file in directory with pattern" << hdrz::sz(pattern));
+					return -1;
+				}
+				break;
+			}
+		}
+
+		// Close search and checking error
+		BOOL bClose = ::FindClose(found);
+		if(bClose == FALSE)
+		{
+			hdrzLogError(L"Error closing file search in directory with pattern" << hdrz::sz(pattern));
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------------------------
 int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 {
 	static const size_t HDRZ_ARG_INCLUDE_DIR_LENGTH = HDRZ_STR_LEN(HDRZ_ARG_INCLUDE_DIR);
@@ -130,9 +186,10 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 			hdrz::sz firstWildCard = wcschr(buffer, L'*');
 			if(firstWildCard != NULL)
 			{
-//				hdrz::sz lastSeparator = wcsrchr(buffer, hdrz::fileSeparator);
 				// TODO : check lastSeparator vs firstWildCard
+//				hdrz::sz lastSeparator = wcsrchr(buffer, hdrz::fileSeparator);
 				// TODO : list folder
+				hdrzGetDirectoryFiles(argSrcFiles, buffer);
 			}
 			else
 			{
