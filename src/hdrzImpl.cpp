@@ -74,6 +74,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	Context::Context()
 		: m_comments(false)
+		, m_onceGuards3(false)
 		, m_incDirs(NULL)
 		, m_incDirsCount(0)
 	{
@@ -520,8 +521,22 @@ namespace hdrz
 				// detect once guards
 				if(detectedOnceGuard2)
 				{
-					hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-					if(detectedOnceGuard3)
+					bool onceGuardsOk = false;
+					if(ctxt.m_onceGuards3)
+					{
+						hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
+						if(detectedOnceGuard3)
+						{
+							// detected once guards 1, 2 & 3
+							onceGuardsOk;
+						}
+					}
+					else
+					{
+						// detected once guards 1 & 2
+						onceGuardsOk = true;
+					}
+					if(onceGuardsOk)
 					{
 						*detectOnce = true;
 						detectOnceNeeded = false;
@@ -648,6 +663,7 @@ namespace hdrz
 		// setup context
 		Context ctxt;
 		ctxt.m_comments = in.m_comments;
+		ctxt.m_onceGuards3 = in.m_onceGuards3;
 		ctxt.m_incDirs = in.m_incDirs;
 		ctxt.m_incDirsCount = in.m_incDirsCount;
 		for(size_t i = 0; i < in.m_definesCount; ++i)

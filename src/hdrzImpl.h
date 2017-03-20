@@ -74,6 +74,7 @@ namespace hdrz
 		void addPreviousInclude(const PreviouslyIncludedFile& val);
 
 		bool m_comments;
+		bool m_onceGuards3;
 		sz* m_incDirs;
 		size_t m_incDirsCount;
 		std::vector<std::wstring> m_defined;
