@@ -18,6 +18,7 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	struct PreviouslyIncludedFile
 	{
+		PreviouslyIncludedFile(sz filePath, bool onceOnly);
 		PreviouslyIncludedFile(const std::wstring& filePath, bool onceOnly);
 
 		std::wstring m_filePath;
@@ -70,6 +71,7 @@ namespace hdrz
 		PreviouslyIncludedFile* findPreviousInclude(sz absoluteFilePath);
 		const std::wstring& getCurrentFilePath() const { return m_walkStack.getTop().m_filePath; }
 		const std::wstring& getCurrentFileName() const { return m_walkStack.getTop().m_fileName; }
+		void addPreviousInclude(const PreviouslyIncludedFile& val);
 
 		bool m_comments;
 		sz* m_incDirs;
@@ -88,6 +90,7 @@ namespace hdrz
 	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted);
 	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool* detectOnce);
 	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool* detectOnce);
+	int tryWalkFile(Context& ctxt, std::wostream& out, sz filePath, bool& skipped);
 
 	// Utils
 	bool filePathIsAbsolute(sz path);

@@ -31,6 +31,15 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
+	PreviouslyIncludedFile::PreviouslyIncludedFile(sz filePath, bool onceOnly)
+		: m_filePath(filePath)
+		, m_onceOnly(onceOnly)
+	{
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
 	PreviouslyIncludedFile::PreviouslyIncludedFile(const std::wstring& filePath, bool onceOnly)
 		: m_filePath(filePath)
 		, m_onceOnly(onceOnly)
@@ -146,6 +155,16 @@ namespace hdrz
 			}
 		}
 		return NULL;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	void Context::addPreviousInclude(const PreviouslyIncludedFile& val)
+	{
+		assert(findPreviousInclude(val.m_filePath.c_str()) == NULL);
+
+		m_prevIncluded.push_back(val);
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -411,29 +430,13 @@ namespace hdrz
 		}
 		else
 		{
-			PreviouslyIncludedFile* prevFile = ctxt.findPreviousInclude(absIncFilePath.c_str());
-			bool prevIncluded = (prevFile != NULL);
-			bool prevOnceOnly = ((prevFile != NULL) && prevFile->m_onceOnly);
-
-			if(prevOnceOnly)
+			bool skipped = false;
+			hdrzReturnIfError(tryWalkFile(ctxt, out, absIncFilePath.c_str(), skipped), L"error trying to walk file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
+			if(skipped)
 			{
 				if(ctxt.m_comments)
 				{
-					out << L"// HDRZ : include skipped as it should be included once only" << std::endl;
-				}
-				out << L"// " << line << std::endl;
-			}
-			else
-			{
-				if(prevIncluded)
-				{
-					hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), NULL), L"error walking previously included file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
-				}
-				else
-				{
-					bool detectOnce = false;
-					hdrzReturnIfError(walkFile(ctxt, out, absIncFilePath.c_str(), &detectOnce), L"error walking file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
-					ctxt.m_prevIncluded.push_back(PreviouslyIncludedFile(absIncFilePath, detectOnce));
+					out << L"// " << line << std::endl;
 				}
 			}
 		}
@@ -602,6 +605,42 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
+	int tryWalkFile(Context& ctxt, std::wostream& out, sz filePath, bool& skipped)
+	{
+		assert(filePathIsAbsolute(filePath));
+
+		PreviouslyIncludedFile* prevFile = ctxt.findPreviousInclude(filePath);
+		bool prevIncluded = (prevFile != NULL);
+		bool alreadyOnce = ((prevFile != NULL) && prevFile->m_onceOnly);
+		skipped = alreadyOnce;
+
+		if(alreadyOnce)
+		{
+			if(ctxt.m_comments)
+			{
+				out << L"// HDRZ : file skipped because it should be once only : " << filePath << std::endl;
+			}
+		}
+		else
+		{
+			if(prevIncluded)
+			{
+				hdrzReturnIfError(walkFile(ctxt, out, filePath, NULL), L"error walking previously included file " << filePath << L" included in " << ctxt.getCurrentFilePath());
+			}
+			else
+			{
+				bool detectOnce = false;
+				hdrzReturnIfError(walkFile(ctxt, out, filePath, &detectOnce), L"error walking file " << filePath << L" included in " << ctxt.getCurrentFilePath());
+				ctxt.addPreviousInclude(PreviouslyIncludedFile(filePath, detectOnce));
+			}
+		}
+
+		return HDRZ_ERR_OK;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
 	int process(const Input& in)
 	{
 		int err = HDRZ_ERR_OK;
@@ -700,7 +739,8 @@ namespace hdrz
 				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
 				break;
 			}
-			hdrzReturnIfError(walkFile(ctxt, out, resolvedSrcFilePath.c_str(), NULL), L"error walking source file #" << i << " " << srcFile);
+			bool skipped = false;
+			hdrzReturnIfError(tryWalkFile(ctxt, out, resolvedSrcFilePath.c_str(), skipped), L"error walking source file #" << i << " " << srcFile);
 		}
 
 		// close output file
