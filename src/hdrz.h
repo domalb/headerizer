@@ -57,8 +57,11 @@ namespace hdrz
 
 	struct Input
 	{
+		Input();
+
 		bool m_onceGuards3;
 		bool m_comments;
+		bool m_content;
 		sz* m_defines;
 		size_t m_definesCount;
 		sz* m_incDirs;

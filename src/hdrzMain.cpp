@@ -123,13 +123,15 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 		const wchar_t* arg = argv[i];
 		if((arg != NULL) && (_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0))
 		{
-			std::wcout << L"verbose mode detected" << std::endl;
+			std::wcout << L"'verbose' detected" << std::endl;
 			hdrz::verbose = true;
 		}
 	}
 
 	// Parse arguments
+	bool onceGuards3 = false;
 	bool comments = false;
+	bool content = true;
 	std::vector<std::wstring> argIncDirs;
 	std::vector<std::wstring> argSrcDirs;
 	std::vector<std::wstring> argSrcFiles;
@@ -151,17 +153,30 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 		{
 			continue;
 		}
+		else if(_wcsicmp(arg, HDRZ_ARG_ONCE_GUARDS_3) == 0)
+		{
+			onceGuards3 = true;
+			hdrzLogInfo(L"'pragma once 3' detected");
+		}
 		else if(_wcsicmp(arg, HDRZ_ARG_COMMENTS) == 0)
 		{
 			comments = true;
+			hdrzLogInfo(L"'integrate comments' detected");
+		}
+		else if(_wcsicmp(arg, HDRZ_ARG_EXCLUDE_CONTENT) == 0)
+		{
+			content = false;
+			hdrzLogInfo(L"'exclude content' detected");
 		}
 		else if(_wcsicmp(arg, HDRZ_ARG_WIN_EOL) == 0)
 		{
 			eol = HDRZ_ARG_WIN_EOL;
+			hdrzLogInfo(L"'Windows EOL' detected");
 		}
 		else if(_wcsicmp(arg, HDRZ_ARG_UNIX_EOL) == 0)
 		{
 			eol = HDRZ_ARG_UNIX_EOL;
+			hdrzLogInfo(L"'Unix EOL' detected");
 		}
 		else if(_wcsnicmp(arg, HDRZ_ARG_WORK_DIR, HDRZ_ARG_WORK_DIR_LENGTH) == 0)
 		{
@@ -226,7 +241,9 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 	}
 	hdrz::Input in;
 	memset(&in, 0, sizeof(in));
+	in.m_onceGuards3 = onceGuards3;
 	in.m_comments = comments;
+	in.m_content = content;
 	in.m_incDirs = incDirNames.data();
 	in.m_incDirsCount = incDirNames.size();
 	in.m_srcFiles = srcFileNames.data();

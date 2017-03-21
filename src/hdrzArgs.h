@@ -11,5 +11,7 @@
 #define HDRZ_ARG_VERBOSE L"-v"
 #define HDRZ_ARG_PAUSE L"-p"
 #define HDRZ_ARG_COMMENTS L"-c"
+#define HDRZ_ARG_EXCLUDE_CONTENT L"-x"
+#define HDRZ_ARG_ONCE_GUARDS_3 L"-og3"
 
 #endif // _hdrzArgs_

@@ -60,7 +60,13 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	struct Context
 	{
-		Context();
+		int init(const Input& in);
+		int process();
+		int tryWalkFile(sz filePath, bool& skipped);
+		int walkFile(sz filePath, bool* detectOnce);
+		int walkFileStream(std::wistream& in, bool* detectOnce);
+		int handleIncludeLine(sz line, sz inclusionSpec, bool quoted);
+
 		/// Locate the file for an inclusion like #include "../foo.h" or #include <framework/foo.h>
 		/// \param[in] inclusionSpec  Content of the inclusion instruction, without quotes, like '../foo.h' or 'framework/foo.h'
 		/// \param[in] quoted  Use of double quotes (true) or angle-brackets (false)
@@ -73,14 +79,24 @@ namespace hdrz
 		const std::wstring& getCurrentFileName() const { return m_walkStack.getTop().m_fileName; }
 		void addPreviousInclude(const PreviouslyIncludedFile& val);
 
-		bool m_comments;
+		std::wostream& comments(sz prefix = L"// ") const;
+		std::wostream& out() const;
+
 		bool m_onceGuards3;
+		bool m_comments;
+		bool m_content;
 		sz* m_incDirs;
 		size_t m_incDirsCount;
+		sz* m_srcFiles;
+		size_t m_srcFilesCount;
 		std::vector<std::wstring> m_defined;
 		std::vector<PreviouslyIncludedFile> m_prevIncluded;
 
 		WalkStack m_walkStack;
+
+		std::wstring m_outFilePath;
+		std::wofstream* m_outStream;
+		std::wostream* m_commentsStream;
 	};
 
 	int detectOncePragma(sz line, bool& detected);
@@ -89,9 +105,6 @@ namespace hdrz
 	int detectOnceGuard3(sz line, sz filenameNoExt, size_t filenameNoExtLength, bool& detected);
 	int detectIncludeLine(sz line, sz& fileNameStart, size_t& fileNameLength);
 	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted);
-	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool* detectOnce);
-	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool* detectOnce);
-	int tryWalkFile(Context& ctxt, std::wostream& out, sz filePath, bool& skipped);
 
 	// Utils
 	bool filePathIsAbsolute(sz path);

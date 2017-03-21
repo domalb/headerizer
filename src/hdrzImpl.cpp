@@ -31,6 +31,24 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
+	Input::Input()
+		: m_onceGuards3(false)
+		, m_comments(false)
+		, m_content(true)
+		, m_defines(NULL)
+		, m_definesCount(0)
+		, m_incDirs(NULL)
+		, m_incDirsCount(0)
+		, m_srcFiles(NULL)
+		, m_srcFilesCount(0)
+		, m_outFile(NULL)
+	{
+
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
 	PreviouslyIncludedFile::PreviouslyIncludedFile(sz filePath, bool onceOnly)
 		: m_filePath(filePath)
 		, m_onceOnly(onceOnly)
@@ -68,16 +86,384 @@ namespace hdrz
 
 		m_items.push_back(WalkItem(fileDir, fileName));
 	}
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int Context::init(const Input& in)
+	{
+		m_onceGuards3 = in.m_onceGuards3;
+		m_comments = in.m_comments;
+		m_content = in.m_content;
+		m_incDirs = in.m_incDirs;
+		m_incDirsCount = in.m_incDirsCount;
+		m_srcFiles = in.m_srcFiles;
+		m_srcFilesCount = in.m_srcFilesCount;
+		m_outStream = NULL;
+
+		for(size_t i = 0; i < in.m_definesCount; ++i)
+		{
+			m_defined.push_back(in.m_defines[i]);
+		}
+
+		// resolve output file path if required
+		sz outFile = in.m_outFile;
+		bool unspecifiedOutFile = ((outFile == NULL) || (*outFile == 0));
+		std::wstring resolvedOutFilePath;
+		if(unspecifiedOutFile || (filePathIsAbsolute(outFile) == false))
+		{
+			if(in.m_srcFilesCount == 1)
+			{
+				// out put file path built from the single source file path
+				sz srcFile = in.m_srcFiles[0];
+				std::wstring resolvedSrcFileDir;
+				std::wstring resolvedSrcFilePath;
+				hdrzReturnIfError(resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
+				if(resolvedSrcFileDir.empty())
+				{
+					hdrzLogError(L"error resolving single source file path for building output file path");
+					return HDRZ_ERR_IN_FILE_NOT_FOUND;
+				}
+				if(unspecifiedOutFile)
+				{
+					// append ".hdrz.h" to source file path
+					resolvedOutFilePath = resolvedSrcFilePath;
+					resolvedOutFilePath += L".hdrz.h";
+				}
+				else
+				{
+					// append relative output file path to source file directory
+					resolvedOutFilePath = resolvedSrcFileDir;
+					resolvedOutFilePath += fileSeparator;
+					resolvedSrcFilePath += outFile;
+					canonicalizeFilePath(resolvedSrcFilePath);
+				}
+			}
+			else
+			{
+				wchar_t exeDir[MAX_PATH] = { 0 };
+				if(getExecutableDirectory(exeDir) == false)
+				{
+					hdrzLogError(L"error getting executable directory for building output file path");
+					return HDRZ_ERR_CANT_GET_EXE_DIR;
+				}
+				else
+				{
+					resolvedOutFilePath = sz(exeDir);
+					resolvedOutFilePath += fileSeparator;
+					if(unspecifiedOutFile)
+					{
+						// file is simply named "hdrz.h" in executable directory
+						resolvedOutFilePath += L"hdrz.h";
+					}
+					else
+					{
+						// append relative output file path to executable directory
+						resolvedOutFilePath += outFile;
+						canonicalizeFilePath(resolvedOutFilePath);
+					}
+					hdrzLogInfo(L"output file path built from executable directory" << resolvedOutFilePath);
+				}
+			}
+			m_outFilePath = resolvedOutFilePath;
+		}
+		else
+		{
+			m_outFilePath = outFile;
+		}
+
+		return HDRZ_ERR_OK;
+	}
 
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	Context::Context()
-		: m_comments(false)
-		, m_onceGuards3(false)
-		, m_incDirs(NULL)
-		, m_incDirsCount(0)
+	int Context::process()
 	{
+		int err = HDRZ_ERR_OK;
+
+		// open output file
+		std::wofstream out;
+		out.open(m_outFilePath.c_str(), std::wofstream::out);
+		if((out.is_open() == false) || out.bad())
+		{
+			hdrzLogError(L"error opening output file " << m_outFilePath.c_str());
+			return HDRZ_ERR_OPEN_OUT_FILE;
+		}
+		m_outStream = &out;
+
+		// build comments stream
+		class NullBuffer : public std::wstreambuf
+		{
+		public:
+			int overflow(int c) { return c; }
+		};
+		static NullBuffer nullBuffer;
+		static std::wostream nullStream(&nullBuffer);
+		m_commentsStream = (m_comments ? &out : &nullStream);
+
+		// walk source files
+		for(size_t i = 0; i < m_srcFilesCount; ++i)
+		{
+			sz srcFile = m_srcFiles[i];
+
+			std::wstring resolvedSrcFileDir;
+			std::wstring resolvedSrcFilePath;
+			hdrzReturnIfError(resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
+			if(resolvedSrcFilePath.empty())
+			{
+				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
+				break;
+			}
+			bool skipped = false;
+			hdrzReturnIfError(tryWalkFile(resolvedSrcFilePath.c_str(), skipped), L"error walking source file #" << i << " " << srcFile);
+		}
+
+		// close comments stream
+		m_commentsStream = NULL;
+
+		// close output file
+		m_outStream = NULL;
+		out.close();
+
+		return err;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int Context::tryWalkFile(sz filePath, bool& skipped)
+	{
+		assert(filePathIsAbsolute(filePath));
+
+		PreviouslyIncludedFile* prevFile = findPreviousInclude(filePath);
+		bool prevIncluded = (prevFile != NULL);
+		bool alreadyOnce = ((prevFile != NULL) && prevFile->m_onceOnly);
+		skipped = alreadyOnce;
+
+		if(alreadyOnce)
+		{
+			comments() << L"HDRZ : file skipped because it should be once only : " << filePath << std::endl;
+		}
+		else
+		{
+			if(prevIncluded)
+			{
+				hdrzReturnIfError(walkFile(filePath, NULL), L"error walking previously included file " << filePath << L" included in " << getCurrentFilePath());
+			}
+			else
+			{
+				bool detectOnce = false;
+				hdrzReturnIfError(walkFile(filePath, &detectOnce), L"error walking file " << filePath << L" included in " << getCurrentFilePath());
+				addPreviousInclude(PreviouslyIncludedFile(filePath, detectOnce));
+			}
+		}
+
+		return HDRZ_ERR_OK;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int Context::walkFile(sz filePath, bool* detectOnce)
+	{
+		assert(filePath != NULL);
+		assert(filePath[0] != 0);
+		assert(filePathIsAbsolute(filePath));
+
+		// Could be removed ?
+		std::wstring canonFilePath(filePath);
+		canonicalizeFilePath(canonFilePath);
+
+		std::wstring fileDir, fileName;
+		splitFilePathToDirAndName(canonFilePath.c_str(), fileDir, fileName);
+		if(fileDir.empty() || fileName.empty())
+		{
+			hdrzLogError(L"error splitting following path to directory & name : " << fileName);
+			return HDRZ_ERR_INVALID_FILE_PATH;
+		}
+
+		int ret = 0;
+		m_walkStack.push(fileDir, fileName);
+		comments() << L"HDRZ : begin of " << getCurrentFilePath() << std::endl;
+
+		std::wifstream in;
+		in.open(filePath);
+		if((in.is_open() == false) || in.bad())
+		{
+			hdrzLogError(L"error opening read file " << canonFilePath);
+			ret = HDRZ_ERR_OPEN_IN_FILE;
+		}
+		else
+		{
+			ret = walkFileStream(in, detectOnce);
+			in.close();
+		}
+
+		comments() << L"HDRZ : end of " << getCurrentFilePath() << std::endl;
+
+		m_walkStack.pop();
+
+		return ret;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int Context::walkFileStream(std::wistream& in, bool* detectOnce)
+	{
+		// Once detection init
+		bool detectOnceNeeded = (detectOnce != NULL);
+		bool detectedOnceGuard1 = false;
+		bool detectedOnceGuard2 = false;
+		bool detectedOnceGuard3 = false;
+		wchar_t fileNameNoExt[MAX_PATH] = { 0 };
+		size_t filenameNoExtLength = 0;
+		if(detectOnceNeeded)
+		{
+			const std::wstring& fileName = getCurrentFileName();
+			strCpy(fileNameNoExt, fileName.c_str());
+			wchar_t* dot = wcschr(fileNameNoExt, L'.');
+			if(dot != NULL)
+			{
+				*dot = 0;
+				filenameNoExtLength = dot - sz(fileNameNoExt);
+			}
+			else
+			{
+				filenameNoExtLength = fileName.length();
+			}
+			*detectOnce = false;
+		}
+
+		// Lines iteration
+		static const size_t lineLengthMax = 2048;
+		int lineIndex = 0;
+		wchar_t line[lineLengthMax];
+
+		while((in.bad() || in.eof()) == false)
+		{
+			in.getline(line, lineLengthMax);
+
+			// detect empty line
+			sz firstNonSpace(line);
+			if(*skipSpaces(firstNonSpace) == 0)
+			{
+				if(m_content)
+				{
+					out() << line << std::endl;
+				}
+				continue;
+			}
+
+			// detect include
+			sz fileNameStart;
+			size_t fileNameLength;
+			hdrzReturnIfError(detectIncludeLine(line, fileNameStart, fileNameLength), L"error detecting include line while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+			bool detectedInclude = (fileNameStart != NULL);
+			if(detectedInclude)
+			{
+				// Include line found
+				wchar_t inclusionSpec[MAX_PATH];
+				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength), L"error copying include file name while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+				bool quoted = (*(fileNameStart + fileNameLength) == L'\"');
+				hdrzReturnIfError(handleIncludeLine(line, inclusionSpec, quoted), L"error handling include of " << inclusionSpec << L" in " << getCurrentFilePath());
+				continue;
+			}
+
+			if(detectOnceNeeded)
+			{
+				// detect once pragma
+				bool detectedOncePragma = false;
+				hdrzReturnIfError(detectOncePragma(line, detectedOncePragma), L"error detecting once pragma while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+				if(detectedOncePragma)
+				{
+					*detectOnce = true;
+					detectOnceNeeded = false;
+					continue;
+				}
+
+				// detect once guards
+				if(detectedOnceGuard2)
+				{
+					bool onceGuardsOk = false;
+					if(m_onceGuards3)
+					{
+						hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+						if(detectedOnceGuard3)
+						{
+							// detected once guards 1, 2 & 3
+							onceGuardsOk = true;
+						}
+					}
+					else
+					{
+						// detected once guards 1 & 2
+						onceGuardsOk = true;
+					}
+					if(onceGuardsOk)
+					{
+						*detectOnce = true;
+						detectOnceNeeded = false;
+					}
+				}
+				else if(detectedOnceGuard1)
+				{
+					hdrzReturnIfError(detectOnceGuard2(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard2), L"error detecting once guard2 while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+				}
+				else
+				{
+					hdrzReturnIfError(detectOnceGuard1(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard1), L"error detecting once guard1 while walking line " << lineIndex << L" in file " << getCurrentFilePath());
+				}
+			}
+
+			// basic line, simply copied
+			if(m_content)
+			{
+				out() << line << std::endl;
+			}
+		}
+		return HDRZ_ERR_OK;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	int Context::handleIncludeLine(sz line, sz inclusionSpec, bool quoted)
+	{
+		assert(m_walkStack.empty() == false);
+
+		// Find the absolute path to include
+		std::wstring absIncFilePath;
+		if(filePathIsAbsolute(inclusionSpec))
+		{
+			if(fileExists(inclusionSpec))
+			{
+				absIncFilePath = inclusionSpec;
+			}
+		}
+		else
+		{
+			std::wstring absIncFileDir;
+			hdrzReturnIfError(resolveInclusion(inclusionSpec, quoted, absIncFileDir, absIncFilePath), L"error resolving inclusion " << getCurrentFilePath());
+		}
+		if(absIncFilePath.empty())
+		{
+			if(m_comments)
+			{
+				comments() << L"HDRZ : include left as-is since no file was found" << std::endl;
+			}
+			if(m_content)
+			{
+				out() << line << std::endl;
+			}
+		}
+		else
+		{
+			bool skipped = false;
+			hdrzReturnIfError(tryWalkFile(absIncFilePath.c_str(), skipped), L"error trying to walk file " << absIncFilePath << L" included in " << getCurrentFilePath());
+		}
+
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -166,6 +552,35 @@ namespace hdrz
 		assert(findPreviousInclude(val.m_filePath.c_str()) == NULL);
 
 		m_prevIncluded.push_back(val);
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	std::wostream& Context::comments(sz prefix) const
+	{
+		assert(m_commentsStream != NULL);
+
+		std::wostream& commentsStream = *m_commentsStream;
+		for(size_t i = 1; i < m_walkStack.size(); ++i)
+		{
+			commentsStream << L"    ";
+		}
+		if(prefix != NULL)
+		{
+			commentsStream << prefix;
+		}
+		return commentsStream;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------------
+	//
+	//----------------------------------------------------------------------------------------------------------------------
+	std::wostream& Context::out() const
+	{
+		assert(m_outStream != NULL);
+		
+		return *m_outStream;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
@@ -403,366 +818,14 @@ namespace hdrz
 	//----------------------------------------------------------------------------------------------------------------------
 	//
 	//----------------------------------------------------------------------------------------------------------------------
-	int handleIncludeLine(Context& ctxt, std::wostream& out, sz line, sz inclusionSpec, bool quoted)
-	{
-		assert(ctxt.m_walkStack.empty() == false);
-
-		// Find the absolute path to include
-		std::wstring absIncFilePath;
-		if(filePathIsAbsolute(inclusionSpec))
-		{
-			if(fileExists(inclusionSpec))
-			{
-				absIncFilePath = inclusionSpec;
-			}
-		}
-		else
-		{
-			std::wstring absIncFileDir;
-			hdrzReturnIfError(ctxt.resolveInclusion(inclusionSpec, quoted, absIncFileDir, absIncFilePath), L"error resolving inclusion " << ctxt.m_walkStack.getTop().m_filePath);
-		}
-		if(absIncFilePath.empty())
-		{
-			if(ctxt.m_comments)
-			{
-				out << L"// HDRZ : include left as-is since no file was found" << std::endl;
-			}
-			out << line << std::endl;
-		}
-		else
-		{
-			bool skipped = false;
-			hdrzReturnIfError(tryWalkFile(ctxt, out, absIncFilePath.c_str(), skipped), L"error trying to walk file " << absIncFilePath << L" included in " << ctxt.getCurrentFilePath());
-			if(skipped)
-			{
-				if(ctxt.m_comments)
-				{
-					out << L"// " << line << std::endl;
-				}
-			}
-		}
-
-		return HDRZ_ERR_OK;
-	}
-
-	//----------------------------------------------------------------------------------------------------------------------
-	//
-	//----------------------------------------------------------------------------------------------------------------------
-	int walkFileStream(Context& ctxt, std::wostream& out, std::wistream& in, bool* detectOnce)
-	{
-		// Once detection init
-		bool detectOnceNeeded = (detectOnce != NULL);
-		bool detectedOnceGuard1 = false;
-		bool detectedOnceGuard2 = false;
-		bool detectedOnceGuard3 = false;
-		wchar_t fileNameNoExt [MAX_PATH] = { 0 };
-		size_t filenameNoExtLength = 0;
-		if(detectOnceNeeded)
-		{
-			const std::wstring& fileName = ctxt.getCurrentFileName();
-			strCpy(fileNameNoExt, fileName.c_str());
-			wchar_t* dot = wcschr(fileNameNoExt, L'.');
-			if(dot != NULL)
-			{
-				*dot = 0;
-				filenameNoExtLength = dot - sz(fileNameNoExt);
-			}
-			else
-			{
-				filenameNoExtLength = fileName.length();
-			}
-			*detectOnce = false;
-		}
-
-		// Lines iteration
-		static const size_t lineLengthMax = 2048;
-		int lineIndex = 0;
-		wchar_t line [lineLengthMax];
-		
-		while((in.bad() || in.eof()) == false)
-		{
-			in.getline(line, lineLengthMax);
-
-			// detect empty line
-			sz firstNonSpace(line);
-			if(*skipSpaces(firstNonSpace) == 0)
-			{
-				out << line << std::endl;
-				continue;
-			}
-
-			// detect include
-			sz fileNameStart;
-			size_t fileNameLength;
-			hdrzReturnIfError(detectIncludeLine(line, fileNameStart, fileNameLength), L"error detecting include line while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-			bool detectedInclude = (fileNameStart != NULL);
-			if(detectedInclude)
-			{
-				// Include line found
-				wchar_t inclusionSpec [MAX_PATH];
-				hdrzReturnIfError(strNCpy(inclusionSpec, fileNameStart, fileNameLength), L"error copying include file name while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-				bool quoted = (*(fileNameStart + fileNameLength) == L'\"');
-				hdrzReturnIfError(handleIncludeLine(ctxt, out, line, inclusionSpec, quoted), L"error handling include of " << inclusionSpec << L" in " << ctxt.getCurrentFilePath());
-				continue;
-			}
-
-			if(detectOnceNeeded)
-			{
-				// detect once pragma
-				bool detectedOncePragma = false;
-				hdrzReturnIfError(detectOncePragma(line, detectedOncePragma), L"error detecting once pragma while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-				if(detectedOncePragma)
-				{
-					*detectOnce = true;
-					detectOnceNeeded = false;
-					continue;
-				}
-
-				// detect once guards
-				if(detectedOnceGuard2)
-				{
-					bool onceGuardsOk = false;
-					if(ctxt.m_onceGuards3)
-					{
-						hdrzReturnIfError(detectOnceGuard3(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard3), L"error detecting once guard3 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-						if(detectedOnceGuard3)
-						{
-							// detected once guards 1, 2 & 3
-							onceGuardsOk;
-						}
-					}
-					else
-					{
-						// detected once guards 1 & 2
-						onceGuardsOk = true;
-					}
-					if(onceGuardsOk)
-					{
-						*detectOnce = true;
-						detectOnceNeeded = false;
-// 						continue;
-					}
-				}
-				else if(detectedOnceGuard1)
-				{
-					hdrzReturnIfError(detectOnceGuard2(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard2), L"error detecting once guard2 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-// 					if(detectedOnceGuard2)
-// 					{
-// 						continue;
-// 					}
-				}
-				else
-				{
-					hdrzReturnIfError(detectOnceGuard1(line, fileNameNoExt, filenameNoExtLength, detectedOnceGuard1), L"error detecting once guard1 while walking line " << lineIndex << L" in file " << ctxt.getCurrentFilePath());
-// 					if(detectedOnceGuard1)
-// 					{
-// 						continue;
-// 					}
-				}
-			}
-
-			// basic line, simply copied
-			out << line << std::endl;
-		}
-		return HDRZ_ERR_OK;
-	}
-
-	//----------------------------------------------------------------------------------------------------------------------
-	//
-	//----------------------------------------------------------------------------------------------------------------------
-	int walkFile(Context& ctxt, std::wostream& out, sz filePath, bool* detectOnce)
-	{
-		assert(filePath != NULL);
-		assert(filePath[0] != 0);
-		assert(filePathIsAbsolute(filePath));
-
-		// Could be removed ?
-		std::wstring canonFilePath(filePath);
-		canonicalizeFilePath(canonFilePath);
-
-		std::wstring fileDir, fileName;
-		splitFilePathToDirAndName(canonFilePath.c_str(), fileDir, fileName);
-		if(fileDir.empty() || fileName.empty())
-		{
-			hdrzLogError(L"error splitting following path to directory & name : " << fileName);
-			return HDRZ_ERR_INVALID_FILE_PATH;
-		}
-
-		int ret = 0;
-		ctxt.m_walkStack.push(fileDir, fileName);
-		if(ctxt.m_comments)
-		{
-			out << L"// HDRZ : begin of " << ctxt.getCurrentFilePath() << std::endl;
-		}
-
-		std::wifstream in;
-		in.open(filePath);
-		if((in.is_open() == false) || in.bad())
-		{
-			hdrzLogError(L"error opening read file " << canonFilePath);
-			ret = HDRZ_ERR_OPEN_IN_FILE;
-		}
-		else
-		{
-			ret = walkFileStream(ctxt, out, in, detectOnce);
-			in.close();
-		}
-
-		if(ctxt.m_comments)
-		{
-			out << L"// HDRZ : end of " << ctxt.getCurrentFilePath() << std::endl;
-		}
-		ctxt.m_walkStack.pop();
-
-		return ret;
-	}
-
-	//----------------------------------------------------------------------------------------------------------------------
-	//
-	//----------------------------------------------------------------------------------------------------------------------
-	int tryWalkFile(Context& ctxt, std::wostream& out, sz filePath, bool& skipped)
-	{
-		assert(filePathIsAbsolute(filePath));
-
-		PreviouslyIncludedFile* prevFile = ctxt.findPreviousInclude(filePath);
-		bool prevIncluded = (prevFile != NULL);
-		bool alreadyOnce = ((prevFile != NULL) && prevFile->m_onceOnly);
-		skipped = alreadyOnce;
-
-		if(alreadyOnce)
-		{
-			if(ctxt.m_comments)
-			{
-				out << L"// HDRZ : file skipped because it should be once only : " << filePath << std::endl;
-			}
-		}
-		else
-		{
-			if(prevIncluded)
-			{
-				hdrzReturnIfError(walkFile(ctxt, out, filePath, NULL), L"error walking previously included file " << filePath << L" included in " << ctxt.getCurrentFilePath());
-			}
-			else
-			{
-				bool detectOnce = false;
-				hdrzReturnIfError(walkFile(ctxt, out, filePath, &detectOnce), L"error walking file " << filePath << L" included in " << ctxt.getCurrentFilePath());
-				ctxt.addPreviousInclude(PreviouslyIncludedFile(filePath, detectOnce));
-			}
-		}
-
-		return HDRZ_ERR_OK;
-	}
-
-	//----------------------------------------------------------------------------------------------------------------------
-	//
-	//----------------------------------------------------------------------------------------------------------------------
 	int process(const Input& in)
 	{
-		int err = HDRZ_ERR_OK;
-
 		// setup context
 		Context ctxt;
-		ctxt.m_comments = in.m_comments;
-		ctxt.m_onceGuards3 = in.m_onceGuards3;
-		ctxt.m_incDirs = in.m_incDirs;
-		ctxt.m_incDirsCount = in.m_incDirsCount;
-		for(size_t i = 0; i < in.m_definesCount; ++i)
-		{
-			ctxt.m_defined.push_back(in.m_defines[i]);
-		}
+		hdrzReturnIfError(ctxt.init(in), L"error initializing context from input");
+		hdrzReturnIfError(ctxt.process(), L"error processing");
 
-		// resolve output file path if required
-		sz outFile = in.m_outFile;
-		bool unspecifiedOutFile = ((outFile == NULL) || (*outFile == 0));
-		std::wstring resolvedOutFilePath;
-		if(unspecifiedOutFile || (filePathIsAbsolute(outFile) == false))
-		{
-			if(in.m_srcFilesCount == 1)
-			{
-				// out put file path built from the single source file path
-				sz srcFile = in.m_srcFiles[0];
-				std::wstring resolvedSrcFileDir;
-				std::wstring resolvedSrcFilePath;
-				hdrzReturnIfError(ctxt.resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
-				if(resolvedSrcFileDir.empty())
-				{
-					hdrzLogError(L"error resolving single source file path for building output file path");
-					return HDRZ_ERR_IN_FILE_NOT_FOUND;
-				}
-				if(unspecifiedOutFile)
-				{
-					// append ".hdrz.h" to source file path
-					resolvedOutFilePath = resolvedSrcFilePath;
-					resolvedOutFilePath += L".hdrz.h";
-				}
-				else
-				{
-					// append relative output file path to source file directory
-					resolvedOutFilePath = resolvedSrcFileDir;
-					resolvedOutFilePath += fileSeparator;
-					resolvedSrcFilePath += outFile;
-					canonicalizeFilePath(resolvedSrcFilePath);
-				}
-			}
-			else
-			{
-				wchar_t exeDir[MAX_PATH] = { 0 };
-				if(getExecutableDirectory(exeDir) == false)
-				{
-					hdrzLogError(L"error getting executable directory for building output file path");
-					return HDRZ_ERR_CANT_GET_EXE_DIR;
-				}
-				else
-				{
-					resolvedOutFilePath = sz(exeDir);
-					resolvedOutFilePath += fileSeparator;
-					if(unspecifiedOutFile)
-					{
-						// file is simply named "hdrz.h" in executable directory
-						resolvedOutFilePath += L"hdrz.h";
-					}
-					else
-					{
-						// append relative output file path to executable directory
-						resolvedOutFilePath += outFile;
-						canonicalizeFilePath(resolvedOutFilePath);
-					}
-					hdrzLogInfo(L"output file path built from executable directory" << resolvedOutFilePath);
-				}
-			}
-			outFile = resolvedOutFilePath.c_str();
-		}
-
-		// open output file
-		std::wofstream out;
-		out.open(outFile, std::wofstream::out);
-		if((out.is_open() == false) || out.bad())
-		{
-			hdrzLogError(L"error opening output file " << in.m_outFile);
-			return HDRZ_ERR_OPEN_OUT_FILE;
-		}
-
-		// walk source files
-		for(size_t i = 0; i < in.m_srcFilesCount; ++i)
-		{
-			sz srcFile = in.m_srcFiles[i];
-
-			std::wstring resolvedSrcFileDir;
-			std::wstring resolvedSrcFilePath;
-			hdrzReturnIfError(ctxt.resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
-			if(resolvedSrcFilePath.empty())
-			{
-				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
-				break;
-			}
-			bool skipped = false;
-			hdrzReturnIfError(tryWalkFile(ctxt, out, resolvedSrcFilePath.c_str(), skipped), L"error walking source file #" << i << " " << srcFile);
-		}
-
-		// close output file
-		out.close();
-
-		return err;
+		return HDRZ_ERR_OK;
 	}
 
 	//----------------------------------------------------------------------------------------------------------------------
