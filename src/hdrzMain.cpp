@@ -123,8 +123,8 @@ int wmain(int argc, wchar_t* argv[] /*, wchar_t* envp[]*/)
 		const wchar_t* arg = argv[i];
 		if((arg != NULL) && (_wcsicmp(arg, HDRZ_ARG_VERBOSE) == 0))
 		{
-			std::wcout << L"'verbose' detected" << std::endl;
 			hdrz::verbose = true;
+			hdrzLogInfo(L"'verbose' detected");
 		}
 	}
 
