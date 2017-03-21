@@ -8,6 +8,8 @@
   See Copyright Notice in gmMachine.h
 
 */
+#ifndef _GMLIBHOOKS_H_
+#define _GMLIBHOOKS_H_
 
 #include "gmConfig.h"
 #include "gmCodeGenHooks.h"
@@ -122,3 +124,4 @@ private:
   }
 
 */
+#endif // _GMLIBHOOKS_H_

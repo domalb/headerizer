@@ -9,8 +9,8 @@
 
 */
 
-#ifndef _GMSTREAMMEM_H_
-#define _GMSTREAMMEM_H_
+#ifndef _GMSTREAMBUFFER_H_
+#define _GMSTREAMBUFFER_H_
 
 #include "gmConfig.h"
 #include "gmStream.h"
@@ -73,4 +73,4 @@ private:
 };
 
 
-#endif // _GMSTREAMMEM_H_
+#endif // _GMSTREAMBUFFER_H_
