@@ -211,6 +211,7 @@ namespace hdrz
 			hdrzReturnIfError(resolveInclusion(srcFile, true, resolvedSrcFileDir, resolvedSrcFilePath), L"error resolving source file " << srcFile);
 			if(resolvedSrcFilePath.empty())
 			{
+				hdrzLogError(L"could not resolve source file " << srcFile);
 				err = HDRZ_ERR_IN_FILE_NOT_FOUND;
 				break;
 			}
