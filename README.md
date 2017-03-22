@@ -39,7 +39,7 @@ Insert comments related to HDRZ behavior in generated header.
 Notifies for not found includes left as-is.
 Notifies begin/end of included files.
 
-`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -c`
+`hdrz.exe -i="C:\my_lib\include" -i="C:\my_skd\include" -f="C:\my_lib\src\impl.cpp -c`
 
 ### Include directory (-i)
 
@@ -47,11 +47,17 @@ Add a directory where included files should be searched.
 
 Quotes are not mandatory.
 
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp`
+
 ### Source file (-f)
 
+Specify the source files to process.
+Can contain a '*' wildcard character to select multiple files at once.
 Quotes are not mandatory.
 
 Multiple files can be added using this argument.
+
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\sub\sub.cpp -f="C:\my_lib\src\*.cpp`
 
 ### Exclude content (-x)
 
@@ -65,7 +71,7 @@ Allows easier debugging with keeping comments only.
 Detect 'once guards' by requiring 3 specific lines (ifndef/define/endif).
 
 In foo.h, once guards are typically
-```
+```cpp
 #ifndef _FOO_H_
 #define _FOO_H_
 ...
