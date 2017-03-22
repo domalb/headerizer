@@ -37,9 +37,9 @@ Error are outputted to std::out.
 
 Insert comments related to HDRZ behavior in generated header.
 Notifies for not found includes left as-is.
-Notifies begin/end of included files
+Notifies begin/end of included files.
 
-`hdrz.exe C:\book1.xlsx C:\book2.xlsx -c`
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -c`
 
 ### Include directory (-i)
 
@@ -53,9 +53,27 @@ Quotes are not mandatory.
 
 Multiple files can be added using this argument.
 
-### Working directory (-w)
+### Exclude content (-x)
 
-Quotes are not mandatory.
+Do not integrate actual content in generated header.
+Allows easier debugging with keeping comments only.
+
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -x`
+
+### Working directory (-og3)
+
+Detect 'once guards' by requiring 3 specific lines (ifndef/define/endif).
+
+In foo.h, once guards are typically
+```
+#ifndef _FOO_H_
+#define _FOO_H_
+...
+#endif // _FOO_H_
+```
+The 'endif' line does not always have a specific comment. By default, only the first two lines are required to trigger the 'once guards' condition. if the og3 option is set, the third line is required too.
+
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -og3`
 
 ### Output file (-o)
 
@@ -63,10 +81,17 @@ Optional in the case of a single source file. In this situation the output file 
 
 Quotes are not mandatory.
 
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -x`
+
 ### Windows End Of Line (-weol)
 
 Optional.
 
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -weol`
+
 ### Unix End Of Line (-ueol)
 
 Optional.
+
+`hdrz.exe -i="C:\my_lib\include" -f="C:\my_lib\src\impl.cpp -ueol`
+
